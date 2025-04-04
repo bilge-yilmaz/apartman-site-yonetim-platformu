@@ -1,7 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { Fragment, useState } from "react"
+import { Fragment, useState, useEffect } from "react"
 import { Dialog, Transition } from "@headlessui/react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -19,7 +19,7 @@ import {
 } from "@heroicons/react/24/outline"
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: HomeIcon },
+  { name: "Anasayfa", href: "/", icon: HomeIcon },
   { name: "Aidat & Ödemeler", href: "/payments", icon: BanknotesIcon },
   { name: "Duyurular", href: "/announcements", icon: MegaphoneIcon },
   { name: "Bakım & Arıza", href: "/maintenance", icon: WrenchIcon },
@@ -31,7 +31,42 @@ const navigation = [
 
 export function Sidebar() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const pathname = usePathname()
+
+  useEffect(() => {
+    setIsLoading(false)
+  }, [])
+
+  if (isLoading) {
+    return (
+      <>
+        <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-72 lg:flex-col">
+          <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r border-gray-200 bg-white px-6 pb-4">
+            <div className="flex h-16 shrink-0 items-center">
+              <div className="h-8 w-32 animate-pulse rounded bg-gray-200" />
+            </div>
+            <nav className="flex flex-1 flex-col">
+              <ul role="list" className="flex flex-1 flex-col gap-y-7">
+                <li>
+                  <ul role="list" className="-mx-2 space-y-1">
+                    {navigation.map((item) => (
+                      <li key={item.name}>
+                        <div className="h-8 w-full animate-pulse rounded bg-gray-200" />
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        </div>
+        <div className="lg:hidden">
+          <div className="h-16 w-16 animate-pulse rounded bg-gray-200" />
+        </div>
+      </>
+    )
+  }
 
   return (
     <>
