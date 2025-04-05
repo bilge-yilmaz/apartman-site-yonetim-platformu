@@ -1,37 +1,64 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://bilgeyilmaz121:6RlagK0hLnV3ruOY@turkey-crime-stats.bfnxn.mongodb.net/apartman-site?retryWrites=true&w=majority';
+// MongoDB bağlantı durumunu takip etmek için tip tanımlaması
+interface MongooseConnection {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+}
+
+// Global değişken tipi tanımlaması
+declare global {
+  var mongooseConnection: MongooseConnection | undefined;
+}
+
+// MongoDB URI
+const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  throw new Error('MongoDB URI çevre değişkeni tanımlanmamış. Lütfen .env dosyasını kontrol edin.');
 }
 
-let cached = global.mongoose;
+// Bağlantı önbelleği
+let cached: MongooseConnection = global.mongooseConnection || { conn: null, promise: null };
 
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
+// Global değişkeni güncelle
+if (!global.mongooseConnection) {
+  global.mongooseConnection = cached;
 }
 
-async function dbConnect() {
+/**
+ * MongoDB veritabanına bağlantı sağlar
+ * @returns Mongoose bağlantısı
+ */
+async function dbConnect(): Promise<typeof mongoose> {
+  // Mevcut bağlantıyı kullan
   if (cached.conn) {
+    console.log('Mevcut MongoDB bağlantısı kullanılıyor');
     return cached.conn;
   }
 
+  // Yeni bağlantı oluştur
   if (!cached.promise) {
+    console.log('Yeni MongoDB bağlantısı oluşturuluyor...');
+    
     const opts = {
       bufferCommands: true,
+      maxPoolSize: 10,
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      return mongoose;
-    });
+    cached.promise = mongoose.connect(MONGODB_URI!, opts)
+      .then((mongoose) => {
+        console.log('MongoDB bağlantısı başarılı!');
+        return mongoose;
+      });
   }
 
   try {
     cached.conn = await cached.promise;
-  } catch (e) {
+  } catch (error) {
+    console.error('MongoDB bağlantı hatası:', error);
     cached.promise = null;
-    throw e;
+    throw error;
   }
 
   return cached.conn;

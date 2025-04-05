@@ -1,8 +1,15 @@
 {
+  "/not-found": "app/not-found.js",
   "/page": "app/page.js",
-  "/payments/page": "app/payments/page.js",
-  "/residents/page": "app/residents/page.js",
   "/maintenance/page": "app/maintenance/page.js",
-  "/reports/page": "app/reports/page.js",
-  "/api/reports/route": "app/api/reports/route.js"
+  "/announcements/page": "app/announcements/page.js",
+  "/api/announcements/route": "app/api/announcements/route.js",
+  "/api/payments/route": "app/api/payments/route.js",
+  "/payments/page": "app/payments/page.js",
+  "/api/maintenance/route": "app/api/maintenance/route.js",
+  "/reservations/page": "app/reservations/page.js",
+  "/residents/page": "app/residents/page.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/settings/page": "app/settings/page.js",
+  "/auth/signin/page": "app/auth/signin/page.js"
 }
