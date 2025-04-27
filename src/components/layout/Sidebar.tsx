@@ -62,7 +62,16 @@ export function Sidebar() {
             // Token'ı decode et
             const base64Payload = token.split('.')[1];
             if (base64Payload) {
-              const payload = JSON.parse(atob(base64Payload));
+              // Base64 decode işlemi
+              const base64 = base64Payload.replace(/-/g, '+').replace(/_/g, '/');
+              const jsonPayload = decodeURIComponent(
+                atob(base64)
+                  .split('')
+                  .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                  .join('')
+              );
+              
+              const payload = JSON.parse(jsonPayload);
               const role = payload.role;
               setUserRole(role);
               
@@ -78,24 +87,24 @@ export function Sidebar() {
                 console.log('Resident navigasyonu yükleniyor');
                 setNavigation(residentNavigation);
               } else {
-                // Bilinmeyen rol için varsayılan olarak boş menü göster
-                console.error('Bilinmeyen rol:', role);
-                setNavigation([]);
+                // Bilinmeyen rol için varsayılan olarak admin menüsünü göster
+                console.warn('Bilinmeyen rol:', role, 'varsayılan olarak admin menüsü gösteriliyor');
+                setNavigation(adminNavigation);
               }
             } else {
-              // Token formatı geçersiz, boş menü göster
-              console.error('Invalid token format');
-              setNavigation([]);
+              // Token formatı geçersiz, varsayılan olarak admin menüsünü göster
+              console.error('Invalid token format, varsayılan olarak admin menüsü gösteriliyor');
+              setNavigation(adminNavigation);
             }
           } catch (parseError) {
-            // Token parse hatası, boş menü göster
-            console.error('Error parsing token:', parseError);
-            setNavigation([]);
+            // Token parse hatası, varsayılan olarak admin menüsünü göster
+            console.error('Error parsing token:', parseError, 'varsayılan olarak admin menüsü gösteriliyor');
+            setNavigation(adminNavigation);
           }
         } else {
-          // Token yok, boş menü göster
-          console.error('Token bulunamadı');
-          setNavigation([]);
+          // Token yok, varsayılan olarak admin menüsünü göster
+          console.error('Token bulunamadı, varsayılan olarak admin menüsü gösteriliyor');
+          setNavigation(adminNavigation);
         }
       } catch (error) {
         console.error('Error fetching user role:', error);

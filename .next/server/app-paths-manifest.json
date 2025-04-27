@@ -1,14 +1,14 @@
 {
-  "/not-found": "app/not-found.js",
-  "/unauthorized/page": "app/unauthorized/page.js",
   "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
-  "/admin/dashboard/page": "app/admin/dashboard/page.js",
-  "/admin/announcements/page": "app/admin/announcements/page.js",
-  "/auth/signin/page": "app/auth/signin/page.js",
   "/resident/dashboard/page": "app/resident/dashboard/page.js",
-  "/resident/maintenance/page": "app/resident/maintenance/page.js",
+  "/admin/dashboard/page": "app/admin/dashboard/page.js",
   "/resident/reservations/page": "app/resident/reservations/page.js",
-  "/resident/payments/page": "app/resident/payments/page.js",
-  "/resident/announcements/page": "app/resident/announcements/page.js",
-  "/resident/profile/page": "app/resident/profile/page.js"
+  "/auth/signin/page": "app/auth/signin/page.js",
+  "/admin/announcements/page": "app/admin/announcements/page.js",
+  "/admin/payments/page": "app/admin/payments/page.js",
+  "/admin/residents/page": "app/admin/residents/page.js",
+  "/admin/maintenance/page": "app/admin/maintenance/page.js",
+  "/admin/reservations/page": "app/admin/reservations/page.js",
+  "/admin/reports/page": "app/admin/reports/page.js",
+  "/admin/settings/page": "app/admin/settings/page.js"
 }
