@@ -1,9 +1,11 @@
 import axios from 'axios';
 import { storage } from './storage';
 
-// Web uygulamanızın API URL'i - geliştirme ortamında localhost, 
-// production'da gerçek domain olacak şekilde değiştirilmeli
-const API_URL = 'http://localhost:3000/api';
+// Mobil cihazlardan erişim için IP adresi kullanmalıyız
+// Geliştirme ortamında bilgisayarınızın IP adresi
+// Örnek: 192.168.1.5 veya 10.0.2.2 (Android Emulator için)
+const API_URL = 'http://10.0.2.2:3000/api'; // Android Emulator için
+// const API_URL = 'http://192.168.1.X:3000/api'; // Gerçek cihazlar için bilgisayarınızın IP'sini kullanın
 
 const api = axios.create({
   baseURL: API_URL,

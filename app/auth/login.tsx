@@ -40,11 +40,6 @@ export default function LoginScreen() {
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.logoContainer}>
-          <Image
-            source={require('../../assets/images/logo.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
           <Text style={styles.title}>Apartman Yönetim</Text>
           <Text style={styles.subtitle}>Mobil Uygulaması</Text>
         </View>

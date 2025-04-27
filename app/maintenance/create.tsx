@@ -1,17 +1,92 @@
 import { useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, TextInput, Button, SegmentedButtons } from 'react-native-paper';
+import { Text, TextInput, Button, RadioButton, SegmentedButtons, ActivityIndicator } from 'react-native-paper';
 import { router } from 'expo-router';
-import { useMaintenanceStore } from '../../store/maintenance';
 import { useUserStore } from '../../store/user';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// AsyncStorage anahtarı
+const MAINTENANCE_STORAGE_KEY = 'maintenance_requests';
+
+// Arıza bildirimi tipi
+type MaintenanceRequest = {
+  _id: string;
+  title: string;
+  description: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  apartmentNo: string;
+  block: string;
+  createdBy?: string;
+  assignedTo?: string;
+  category?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export default function CreateMaintenanceScreen() {
-  const { createRequest, isLoading } = useMaintenanceStore();
   const { user } = useUserStore();
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'>('MEDIUM');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Arıza bildirimi oluştur
+  const createMaintenanceRequest = async (data: {
+    title: string;
+    description: string;
+    priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+    apartmentNo: string;
+    block: string;
+  }) => {
+    try {
+      console.log('Yeni arıza bildirimi oluşturuluyor:', data);
+      
+      // AsyncStorage'dan mevcut arıza bildirimlerini al
+      const storedData = await AsyncStorage.getItem(MAINTENANCE_STORAGE_KEY);
+      let currentRequests: MaintenanceRequest[] = [];
+      
+      if (storedData) {
+        currentRequests = JSON.parse(storedData);
+        console.log('Mevcut arıza bildirimleri:', currentRequests.length);
+      }
+      
+      // Yeni arıza bildirimi oluştur
+      const newRequest: MaintenanceRequest = {
+        _id: `new_${Date.now()}`,
+        title: data.title,
+        description: data.description,
+        priority: data.priority,
+        status: 'PENDING',
+        apartmentNo: data.apartmentNo,
+        block: data.block,
+        createdBy: user?.id || 'unknown',
+        category: 'GENERAL',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Yeni arıza bildirimini listeye ekle (en başa)
+      const updatedRequests = [newRequest, ...currentRequests];
+      
+      // Güncellenmiş listeyi AsyncStorage'a kaydet
+      await AsyncStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(updatedRequests));
+      console.log('Arıza bildirimleri güncellendi, yeni toplam:', updatedRequests.length);
+      
+      return {
+        success: true,
+        data: newRequest,
+        message: 'Arıza bildirimi başarıyla oluşturuldu'
+      };
+    } catch (error) {
+      console.error('Arıza bildirimi oluşturulurken hata:', error);
+      return {
+        success: false,
+        message: 'Arıza bildirimi oluşturulurken bir hata oluştu'
+      };
+    }
+  };
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -30,7 +105,10 @@ export default function CreateMaintenanceScreen() {
     }
 
     try {
-      await createRequest({
+      setIsSubmitting(true);
+      console.log('Arıza bildirimi gönderiliyor...');
+      
+      const result = await createMaintenanceRequest({
         title,
         description,
         priority,
@@ -38,11 +116,29 @@ export default function CreateMaintenanceScreen() {
         block: user.block,
       });
       
-      Alert.alert('Başarılı', 'Arıza bildiriminiz oluşturuldu', [
-        { text: 'Tamam', onPress: () => router.back() }
-      ]);
+      console.log('Arıza bildirimi oluşturma sonucu:', result);
+      
+      if (result && result.success) {
+        console.log('Arıza bildirimi başarıyla oluşturuldu');
+        
+        Alert.alert('Başarılı', 'Arıza bildiriminiz oluşturuldu', [
+          { 
+            text: 'Tamam', 
+            onPress: () => {
+              // Ana ekrana dön
+              router.replace('/(tabs)');
+            }
+          }
+        ]);
+      } else {
+        console.error('Arıza bildirimi oluşturulamadı:', result?.message || 'Bilinmeyen hata');
+        Alert.alert('Hata', result?.message || 'Arıza bildirimi oluşturulurken bir hata oluştu');
+      }
     } catch (error) {
+      console.error('Arıza bildirimi oluşturma hatası:', error);
       Alert.alert('Hata', 'Arıza bildirimi oluşturulurken bir hata oluştu');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -96,8 +192,8 @@ export default function CreateMaintenanceScreen() {
             mode="contained"
             onPress={handleSubmit}
             style={styles.button}
-            loading={isLoading}
-            disabled={isLoading}
+            loading={isSubmitting}
+            disabled={isSubmitting}
           >
             Arıza Bildir
           </Button>

@@ -1,10 +1,11 @@
 import { Stack } from 'expo-router';
 import { useColorScheme } from 'react-native';
-import { PaperProvider, MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
+import { PaperProvider } from 'react-native-paper';
 import { useFonts } from 'expo-font';
 import { SplashScreen } from 'expo-router';
 import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { lightTheme, darkTheme } from '../constants/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -14,9 +15,7 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   const [loaded, error] = useFonts({
-    'Poppins-Regular': require('../assets/fonts/Poppins-Regular.ttf'),
-    'Poppins-Medium': require('../assets/fonts/Poppins-Medium.ttf'),
-    'Poppins-Bold': require('../assets/fonts/Poppins-Bold.ttf'),
+    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
   useEffect(() => {
@@ -35,7 +34,7 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <PaperProvider theme={colorScheme === 'dark' ? MD3DarkTheme : MD3LightTheme}>
+      <PaperProvider theme={colorScheme === 'dark' ? darkTheme : lightTheme}>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="auth/login" options={{ title: 'Giriş Yap' }} />

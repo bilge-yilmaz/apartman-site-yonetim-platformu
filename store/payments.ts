@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import api, { apiQueue } from '../utils/api';
-import { storage } from '../utils/storage';
+import { apiQueue, apiServices } from '../utils/api-services';
+import storage from '../utils/storage';
 import { format } from 'date-fns';
+import NetInfo from '@react-native-community/netinfo';
 
 export type Payment = {
   _id: string;
@@ -35,15 +36,22 @@ export const usePaymentsStore = create<PaymentsStore>((set, get) => ({
   fetchPayments: async () => {
     try {
       set({ isLoading: true, error: null });
-      const response = await api.get('/resident/dashboard');
-      const payments = response.data.payments || [];
       
-      set({ payments, isLoading: false });
-      // Offline kullanım için önbelleğe al
-      storage.set('payments_cache', {
-        data: payments,
-        timestamp: new Date().toISOString(),
-      });
+      // İnternet bağlantısını kontrol et
+      const netInfo = await NetInfo.fetch();
+      
+      if (netInfo.isConnected) {
+        // Online: API'den veri al
+        const payments = await apiServices.payments.getAll();
+        
+        set({ payments, isLoading: false });
+        // Offline kullanım için önbelleğe al
+        await storage.cachePayments(payments);
+      } else {
+        // Offline: Önbellekten veri al
+        console.log('Offline mod: Önbellekten aidat verileri alınıyor');
+        await get().refreshFromCache();
+      }
     } catch (error: any) {
       console.error('Aidat verisi alınamadı:', error);
       set({ 
@@ -51,7 +59,7 @@ export const usePaymentsStore = create<PaymentsStore>((set, get) => ({
         error: error.response?.data?.message || 'Aidat bilgileri alınamadı'
       });
       
-      // Offline durum için önbellekten oku
+      // Hata durumunda önbellekten oku
       await get().refreshFromCache();
     }
   },
@@ -60,25 +68,29 @@ export const usePaymentsStore = create<PaymentsStore>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
-      // Online ise doğrudan API'ye gönder
-      await api.post(`/payments/${paymentId}/pay`, { 
+      // İnternet bağlantısını kontrol et
+      const netInfo = await NetInfo.fetch();
+      
+      const paymentData = { 
         paymentMethod: method,
         paymentDate: format(new Date(), 'yyyy-MM-dd')
-      });
+      };
       
-      await get().fetchPayments();
-    } catch (error: any) {
-      console.error('Ödeme yapılamadı:', error);
-      
-      // Offline ise kuyruğa ekle
-      if (error.message === 'Network Error') {
+      if (netInfo.isConnected) {
+        // Online: API'ye gönder
+        await apiServices.payments.makePayment({
+          paymentId,
+          ...paymentData
+        });
+        
+        // Başarılı ödeme sonrası verileri yenile
+        await get().fetchPayments();
+      } else {
+        // Offline: Kuyruğa ekle
         await apiQueue.add({
           url: `/payments/${paymentId}/pay`,
-          method: 'POST',
-          data: { 
-            paymentMethod: method,
-            paymentDate: format(new Date(), 'yyyy-MM-dd')
-          }
+          method: 'post',
+          data: paymentData
         });
         
         // Kullanıcıya hemen geri bildirim vermek için yerel state'i güncelle
@@ -94,18 +106,16 @@ export const usePaymentsStore = create<PaymentsStore>((set, get) => ({
         );
         
         set({ payments: updatedPayments, isLoading: false });
-        storage.set('payments_cache', {
-          data: updatedPayments,
-          timestamp: new Date().toISOString(),
-        });
-        
-        return;
+        await storage.cachePayments(updatedPayments);
       }
+    } catch (error: any) {
+      console.error('Ödeme yapılamadı:', error);
       
       set({ 
         isLoading: false, 
         error: error.response?.data?.message || 'Ödeme yapılamadı'
       });
+      throw error;
     }
   },
   
@@ -114,9 +124,11 @@ export const usePaymentsStore = create<PaymentsStore>((set, get) => ({
   },
   
   refreshFromCache: async () => {
-    const cached = await storage.get<{data: Payment[], timestamp: string}>('payments_cache');
+    const cached = await storage.getCachedPayments();
     if (cached?.data) {
-      set({ payments: cached.data });
+      set({ payments: cached.data, isLoading: false });
+    } else {
+      set({ isLoading: false });
     }
   },
 }));

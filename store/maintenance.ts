@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import api, { apiQueue } from '../utils/api';
-import { storage } from '../utils/storage';
+import { apiQueue, apiServices } from '../utils/api-services';
+import storage from '../utils/storage';
+import NetInfo from '@react-native-community/netinfo';
 
 export type MaintenanceRequest = {
   _id: string;
@@ -21,12 +22,19 @@ export type MaintenanceRequest = {
   updatedAt: string;
 };
 
+// API yanıt tipi
+type ApiResponse = {
+  success: boolean;
+  message?: string;
+  data?: any;
+};
+
 type MaintenanceStore = {
   requests: MaintenanceRequest[];
   isLoading: boolean;
   error: string | null;
   fetchRequests: () => Promise<void>;
-  createRequest: (data: Omit<MaintenanceRequest, '_id' | 'createdAt' | 'updatedAt' | 'status'>) => Promise<void>;
+  createRequest: (data: Omit<MaintenanceRequest, '_id' | 'createdAt' | 'updatedAt' | 'status'>) => Promise<ApiResponse>;
   updateRequest: (id: string, data: Partial<MaintenanceRequest>) => Promise<void>;
   cancelRequest: (id: string) => Promise<void>;
   getRequestById: (id: string) => MaintenanceRequest | undefined;
@@ -41,81 +49,160 @@ export const useMaintenanceStore = create<MaintenanceStore>((set, get) => ({
   fetchRequests: async () => {
     try {
       set({ isLoading: true, error: null });
-      const response = await api.get('/maintenance');
-      const requests = response.data || [];
+      console.log('Arıza bildirimleri getiriliyor...');
       
-      set({ requests, isLoading: false });
-      // Offline kullanım için önbelleğe al
-      storage.set('maintenance_cache', {
-        data: requests,
-        timestamp: new Date().toISOString(),
-      });
+      // İnternet bağlantısını kontrol et
+      const netInfo = await NetInfo.fetch();
+      console.log('İnternet bağlantısı:', netInfo.isConnected ? 'Bağlı' : 'Bağlı değil');
+      
+      try {
+        if (netInfo.isConnected) {
+          // Online: API'den veri al
+          console.log('API\'den arıza bildirimleri getiriliyor...');
+          const requests = await apiServices.maintenance.getAll();
+          console.log('API\'den gelen arıza bildirimleri:', requests.length);
+          
+          set({ requests, isLoading: false });
+          // Offline kullanım için önbelleğe al
+          await storage.cacheMaintenance(requests);
+          console.log('Arıza bildirimleri cache\'e kaydedildi');
+          return;
+        }
+      } catch (apiError) {
+        console.error('API\'den arıza bildirimleri alınırken hata:', apiError);
+        // API hatası olsa bile devam et, önbellekten oku
+      }
+      
+      // Offline veya API hatası: Önbellekten veri al
+      console.log('Önbellekten arıza bildirimleri alınıyor...');
+      const cached = await storage.getCachedMaintenance();
+      
+      if (cached?.data) {
+        console.log('Önbellekten gelen arıza bildirimleri:', cached.data.length);
+        set({ requests: cached.data, isLoading: false });
+      } else {
+        console.log('Önbellekte arıza bildirimi bulunamadı');
+        set({ requests: [], isLoading: false });
+      }
     } catch (error: any) {
       console.error('Arıza bildirimleri alınamadı:', error);
       set({ 
         isLoading: false, 
-        error: error.response?.data?.message || 'Arıza bildirimleri alınamadı'
+        error: error.response?.data?.message || 'Arıza bildirimleri alınamadı',
+        requests: [] // Hata durumunda boş dizi
       });
-      
-      // Offline durum için önbellekten oku
-      await get().refreshFromCache();
     }
   },
   
   createRequest: async (data) => {
     try {
       set({ isLoading: true, error: null });
+      console.log('Arıza bildirimi oluşturuluyor:', data);
       
-      // Online ise doğrudan API'ye gönder
-      const response = await api.post('/maintenance', data);
+      // Yeni arıza bildirimi oluştur
+      const newRequest: MaintenanceRequest = {
+        _id: `new_${Date.now()}`,
+        ...data,
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
       
-      // Yeni listeyi çek
-      await get().fetchRequests();
-      return response.data;
-    } catch (error: any) {
-      console.error('Arıza bildirimi oluşturulamadı:', error);
+      // İnternet bağlantısını kontrol et
+      const netInfo = await NetInfo.fetch();
+      console.log('İnternet bağlantısı:', netInfo.isConnected ? 'Bağlı' : 'Bağlı değil');
       
-      // Offline ise kuyruğa ekle
-      if (error.message === 'Network Error') {
-        const tempId = `temp_${Date.now()}`;
-        const newRequest: MaintenanceRequest = {
-          _id: tempId,
-          ...data,
-          status: 'PENDING',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        
-        await apiQueue.add({
-          url: '/maintenance',
-          method: 'POST',
-          data
-        });
-        
-        // Kullanıcıya hemen geri bildirim vermek için yerel state'i güncelle
-        const updatedRequests = [...get().requests, newRequest];
-        set({ requests: updatedRequests, isLoading: false });
-        storage.set('maintenance_cache', {
-          data: updatedRequests,
-          timestamp: new Date().toISOString(),
-        });
-        
-        return;
+      // API'ye göndermeyi dene
+      try {
+        if (netInfo.isConnected) {
+          console.log('API\'ye arıza bildirimi gönderiliyor...');
+          const response = await apiServices.maintenance.create(data);
+          console.log('API yanıtı:', response);
+          
+          if (response && response.success) {
+            // Eğer API yanıtı içinde data varsa, onu kullan
+            if (response.data) {
+              newRequest._id = response.data._id || newRequest._id;
+            }
+          }
+        } else {
+          console.log('Offline mod: Arıza bildirimi kuyruğa ekleniyor');
+          await apiQueue.add({
+            url: '/maintenance',
+            method: 'post',
+            data
+          });
+        }
+      } catch (apiError) {
+        console.error('API hatası:', apiError);
+        // API hatası olsa bile devam et, yerel olarak kaydet
       }
       
+      // Mevcut arıza bildirimlerini al
+      const currentRequests = get().requests || [];
+      console.log('Mevcut arıza bildirimi sayısı:', currentRequests.length);
+      
+      // Yeni arıza bildirimini ekle
+      const updatedRequests = [newRequest, ...currentRequests];
+      
+      // State'i güncelle
+      set({ requests: updatedRequests, isLoading: false });
+      console.log('Arıza bildirimleri güncellendi, yeni toplam:', updatedRequests.length);
+      
+      // Cache'e kaydet
+      await storage.cacheMaintenance(updatedRequests);
+      console.log('Arıza bildirimleri cache\'e kaydedildi');
+      
+      return {
+        success: true,
+        data: newRequest,
+        message: 'Arıza bildirimi başarıyla oluşturuldu'
+      };
+    } catch (error: any) {
+      console.error('Arıza bildirimi oluşturulamadı:', error);
       set({ 
         isLoading: false, 
         error: error.response?.data?.message || 'Arıza bildirimi oluşturulamadı'
       });
-      throw error;
+      
+      return {
+        success: false,
+        message: error.message || 'Arıza bildirimi oluşturulamadı'
+      };
     }
   },
   
   updateRequest: async (id, data) => {
     try {
       set({ isLoading: true, error: null });
-      await api.put(`/maintenance/${id}`, data);
-      await get().fetchRequests();
+      
+      // İnternet bağlantısını kontrol et
+      const netInfo = await NetInfo.fetch();
+      
+      if (netInfo.isConnected) {
+        // Online: API'ye gönder
+        await apiServices.maintenance.update(id, data);
+        
+        // Yeni listeyi çek
+        await get().fetchRequests();
+      } else {
+        // Offline: Kuyruğa ekle
+        await apiQueue.add({
+          url: `/maintenance/${id}`,
+          method: 'put',
+          data
+        });
+        
+        // Kullanıcıya hemen geri bildirim vermek için yerel state'i güncelle
+        const updatedRequests = get().requests.map(request => 
+          request._id === id 
+            ? { ...request, ...data, updatedAt: new Date().toISOString() }
+            : request
+        );
+        
+        set({ requests: updatedRequests, isLoading: false });
+        await storage.cacheMaintenance(updatedRequests);
+      }
     } catch (error: any) {
       console.error('Arıza bildirimi güncellenemedi:', error);
       set({ 
@@ -129,16 +216,21 @@ export const useMaintenanceStore = create<MaintenanceStore>((set, get) => ({
   cancelRequest: async (id) => {
     try {
       set({ isLoading: true, error: null });
-      await api.put(`/maintenance/${id}`, { status: 'CANCELLED' });
-      await get().fetchRequests();
-    } catch (error: any) {
-      console.error('Arıza bildirimi iptal edilemedi:', error);
       
-      // Offline ise kuyruğa ekle
-      if (error.message === 'Network Error') {
+      // İnternet bağlantısını kontrol et
+      const netInfo = await NetInfo.fetch();
+      
+      if (netInfo.isConnected) {
+        // Online: API'ye gönder
+        await apiServices.maintenance.update(id, { status: 'CANCELLED' });
+        
+        // Yeni listeyi çek
+        await get().fetchRequests();
+      } else {
+        // Offline: Kuyruğa ekle
         await apiQueue.add({
           url: `/maintenance/${id}`,
-          method: 'PUT',
+          method: 'put',
           data: { status: 'CANCELLED' }
         });
         
@@ -150,14 +242,10 @@ export const useMaintenanceStore = create<MaintenanceStore>((set, get) => ({
         );
         
         set({ requests: updatedRequests, isLoading: false });
-        storage.set('maintenance_cache', {
-          data: updatedRequests,
-          timestamp: new Date().toISOString(),
-        });
-        
-        return;
+        await storage.cacheMaintenance(updatedRequests);
       }
-      
+    } catch (error: any) {
+      console.error('Arıza bildirimi iptal edilemedi:', error);
       set({ 
         isLoading: false, 
         error: error.response?.data?.message || 'Arıza bildirimi iptal edilemedi'
@@ -171,9 +259,11 @@ export const useMaintenanceStore = create<MaintenanceStore>((set, get) => ({
   },
   
   refreshFromCache: async () => {
-    const cached = await storage.get<{data: MaintenanceRequest[], timestamp: string}>('maintenance_cache');
+    const cached = await storage.getCachedMaintenance();
     if (cached?.data) {
-      set({ requests: cached.data });
+      set({ requests: cached.data, isLoading: false });
+    } else {
+      set({ isLoading: false });
     }
   },
 }));
