@@ -10,6 +10,7 @@ export interface IUser {
   apartmentNo?: string
   block?: string
   isActive: boolean
+  lastLogin?: Date
   createdAt: Date
   updatedAt: Date
 }
@@ -31,6 +32,7 @@ const UserSchema = new mongoose.Schema<IUser, UserModel>(
     apartmentNo: { type: String, default: '' },
     block: { type: String, default: '' },
     isActive: { type: Boolean, default: true },
+    lastLogin: { type: Date },
   },
   {
     timestamps: true,

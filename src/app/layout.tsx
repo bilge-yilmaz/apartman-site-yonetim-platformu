@@ -4,6 +4,7 @@ import "./globals.css"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 import { AuthProvider } from '@/providers/AuthProvider'
+import { usePathname } from 'next/navigation'
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -17,23 +18,15 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  // Auth sayfalarında sidebar ve header gösterme
+  // Not: Bu client component olmadığı için usePathname burada çalışmaz
+  // Bunun yerine auth sayfaları için ayrı bir layout kullanıyoruz (auth/layout.tsx)
+  
   return (
     <html lang="tr" className="h-full bg-gray-50">
       <body className={`${inter.className} h-full`}>
         <AuthProvider>
-          <div className="min-h-full">
-            <div className="fixed inset-y-0 z-50 flex w-72 flex-col">
-              <Sidebar />
-            </div>
-            <div className="pl-72">
-              <Header />
-              <main className="py-10">
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                  {children}
-                </div>
-              </main>
-            </div>
-          </div>
+          {children}
         </AuthProvider>
       </body>
     </html>

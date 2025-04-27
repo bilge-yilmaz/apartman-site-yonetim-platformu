@@ -8,6 +8,8 @@ declare module 'next-auth' {
       apartmentNo?: string
       block?: string
       isActive: boolean
+      userId?: string
+      lastLogin?: string
     } & DefaultSession['user']
   }
 
@@ -16,6 +18,7 @@ declare module 'next-auth' {
     apartmentNo?: string
     block?: string
     isActive: boolean
+    lastLogin?: Date
   }
 }
 
@@ -25,5 +28,7 @@ declare module 'next-auth/jwt' {
     apartmentNo?: string
     block?: string
     isActive: boolean
+    userId?: string
+    lastLogin?: string
   }
 }

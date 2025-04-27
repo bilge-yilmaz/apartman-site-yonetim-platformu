@@ -1,28 +1,50 @@
-import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '../../auth/[...nextauth]/route'
+import { NextRequest, NextResponse } from 'next/server'
 import dbConnect from '@/lib/db'
 import Payment from '@/models/Payment'
 import Maintenance from '@/models/Maintenance'
 import Reservation from '@/models/Reservation'
 import { Model } from 'mongoose'
+import mongoose from 'mongoose'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-
-    if (!session || !session.user) {
+    // JWT token'ı cookie'den al
+    const token = req.cookies.get('token')?.value
+    
+    if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    
+    // Token'ı decode et
+    let payload;
+    try {
+      const base64Payload = token.split('.')[1]
+      payload = JSON.parse(Buffer.from(base64Payload, 'base64').toString('utf8'))
+    } catch (error) {
+      console.error('Token decode hatası:', error)
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+    }
+    
+    if (!payload || !payload.email) {
+      return NextResponse.json({ error: 'Invalid token payload' }, { status: 401 })
     }
 
     await dbConnect()
+    
+    // Kullanıcı bilgilerini veritabanından al
+    const usersCollection = mongoose.connection.collection('users')
+    const user = await usersCollection.findOne({ email: payload.email })
+    
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
 
     // Kullanıcının aidat ödemeleri
     const payments = await (Payment as Model<any>).aggregate([
       {
         $match: {
-          apartmentNo: session.user.apartmentNo,
-          block: session.user.block,
+          apartmentNo: user.apartmentNo,
+          block: user.block,
         },
       },
       {
@@ -51,22 +73,22 @@ export async function GET() {
     // Kullanıcının bakım talepleri
     const maintenanceStats = {
       total: await (Maintenance as Model<any>).countDocuments({
-        apartmentNo: session.user.apartmentNo,
-        block: session.user.block,
+        apartmentNo: user.apartmentNo,
+        block: user.block,
       }),
       pending: await (Maintenance as Model<any>).countDocuments({
-        apartmentNo: session.user.apartmentNo,
-        block: session.user.block,
+        apartmentNo: user.apartmentNo,
+        block: user.block,
         status: 'PENDING',
       }),
       inProgress: await (Maintenance as Model<any>).countDocuments({
-        apartmentNo: session.user.apartmentNo,
-        block: session.user.block,
+        apartmentNo: user.apartmentNo,
+        block: user.block,
         status: 'IN_PROGRESS',
       }),
       completed: await (Maintenance as Model<any>).countDocuments({
-        apartmentNo: session.user.apartmentNo,
-        block: session.user.block,
+        apartmentNo: user.apartmentNo,
+        block: user.block,
         status: 'COMPLETED',
       }),
     }
@@ -74,8 +96,8 @@ export async function GET() {
     // Son bakım talepleri
     const recentMaintenance = await (Maintenance as Model<any>)
       .find({
-        apartmentNo: session.user.apartmentNo,
-        block: session.user.block,
+        apartmentNo: user.apartmentNo,
+        block: user.block,
       })
       .sort({ createdAt: -1 })
       .limit(5)
@@ -84,8 +106,8 @@ export async function GET() {
     // Yaklaşan rezervasyonlar
     const upcomingReservations = await (Reservation as Model<any>)
       .find({
-        apartmentNo: session.user.apartmentNo,
-        block: session.user.block,
+        apartmentNo: user.apartmentNo,
+        block: user.block,
         startTime: { $gte: new Date() },
       })
       .sort({ startTime: 1 })

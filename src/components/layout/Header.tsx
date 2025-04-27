@@ -4,11 +4,12 @@ import { Fragment, useEffect, useState } from "react"
 import { Menu, Transition } from "@headlessui/react"
 import { BellIcon, ChevronDownIcon } from "@heroicons/react/24/outline"
 import { cn } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 const userNavigation = [
-  { name: "Profilim", href: "#" },
-  { name: "Ayarlar", href: "#" },
-  { name: "Çıkış", href: "#" },
+  { name: "Profilim", href: "/profile" },
+  { name: "Ayarlar", href: "/settings" },
+  { name: "Çıkış", href: "/auth/signout" },
 ]
 
 const notifications = [
@@ -37,9 +38,50 @@ const notifications = [
 
 export function Header() {
   const [isLoading, setIsLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
+  const router = useRouter()
+
+  // Çıkış yapma işlevi
+  const handleSignOut = async () => {
+    try {
+      // Cookie'yi sil
+      document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+      
+      // Giriş sayfasına yönlendir
+      router.push('/auth/signin')
+    } catch (error) {
+      console.error('Error signing out:', error)
+    }
+  }
 
   useEffect(() => {
-    setIsLoading(false)
+    // Kullanıcı bilgilerini al
+    const fetchUserInfo = async () => {
+      try {
+        // Cookie'den token'ı al
+        const token = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('token='))
+          ?.split('=')[1]
+
+        if (token) {
+          // Token'ı decode et
+          const base64Payload = token.split('.')[1]
+          const payload = JSON.parse(atob(base64Payload))
+          setUser({
+            name: payload.name || 'Kullanıcı',
+            email: payload.email,
+            role: payload.role
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching user info:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchUserInfo()
   }, [])
 
   if (isLoading) {
@@ -139,7 +181,7 @@ export function Header() {
                   className="ml-4 text-sm font-semibold leading-6 text-gray-900"
                   aria-hidden="true"
                 >
-                  Yönetici
+                  {user?.name || 'Kullanıcı'}
                 </span>
                 <ChevronDownIcon
                   className="ml-2 h-5 w-5 text-gray-400"
@@ -159,17 +201,33 @@ export function Header() {
               <Menu.Items className="absolute right-0 z-10 mt-2.5 w-32 origin-top-right rounded-md bg-white py-2 shadow-lg ring-1 ring-gray-900/5 focus:outline-none">
                 {userNavigation.map((item) => (
                   <Menu.Item key={item.name}>
-                    {({ active }) => (
-                      <a
-                        href={item.href}
-                        className={cn(
-                          active ? "bg-gray-50" : "",
-                          "block px-3 py-1 text-sm leading-6 text-gray-900"
-                        )}
-                      >
-                        {item.name}
-                      </a>
-                    )}
+                    {({ active }) => {
+                      if (item.name === "Çıkış") {
+                        return (
+                          <button
+                            onClick={handleSignOut}
+                            className={cn(
+                              active ? "bg-gray-50" : "",
+                              "block w-full text-left px-3 py-1 text-sm leading-6 text-gray-900"
+                            )}
+                          >
+                            {item.name}
+                          </button>
+                        )
+                      } else {
+                        return (
+                          <a
+                            href={item.href}
+                            className={cn(
+                              active ? "bg-gray-50" : "",
+                              "block px-3 py-1 text-sm leading-6 text-gray-900"
+                            )}
+                          >
+                            {item.name}
+                          </a>
+                        )
+                      }
+                    }}
                   </Menu.Item>
                 ))}
               </Menu.Items>

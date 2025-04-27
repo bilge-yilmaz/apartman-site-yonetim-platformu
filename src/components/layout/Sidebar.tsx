@@ -18,26 +18,98 @@ import {
   Bars3Icon,
 } from "@heroicons/react/24/outline"
 
-const navigation = [
-  { name: "Anasayfa", href: "/", icon: HomeIcon },
-  { name: "Aidat & Ödemeler", href: "/payments", icon: BanknotesIcon },
-  { name: "Duyurular", href: "/announcements", icon: MegaphoneIcon },
-  { name: "Bakım & Arıza", href: "/maintenance", icon: WrenchIcon },
-  { name: "Rezervasyonlar", href: "/reservations", icon: CalendarIcon },
-  { name: "Raporlar", href: "/reports", icon: ChartBarIcon },
-  { name: "Site Sakinleri", href: "/residents", icon: UserGroupIcon },
-  { name: "Ayarlar", href: "/settings", icon: Cog6ToothIcon },
+// Admin ve Manager menü öğeleri
+const adminNavigation = [
+  { name: "Yönetim Paneli", href: "/admin/dashboard", icon: HomeIcon },
+  { name: "Site Sakinleri", href: "/admin/residents", icon: UserGroupIcon },
+  { name: "Aidat Yönetimi", href: "/admin/payments", icon: BanknotesIcon },
+  { name: "Duyurular", href: "/admin/announcements", icon: MegaphoneIcon },
+  { name: "Bakım Talepleri", href: "/admin/maintenance", icon: WrenchIcon },
+  { name: "Rezervasyonlar", href: "/admin/reservations", icon: CalendarIcon },
+  { name: "Raporlar", href: "/admin/reports", icon: ChartBarIcon },
+  { name: "Ayarlar", href: "/admin/settings", icon: Cog6ToothIcon },
+]
+
+// Resident menü öğeleri
+const residentNavigation = [
+  { name: "Sakin Paneli", href: "/resident/dashboard", icon: HomeIcon },
+  { name: "Aidat & Ödemeler", href: "/resident/payments", icon: BanknotesIcon },
+  { name: "Duyurular", href: "/resident/announcements", icon: MegaphoneIcon },
+  { name: "Bakım & Arıza", href: "/resident/maintenance", icon: WrenchIcon },
+  { name: "Rezervasyonlar", href: "/resident/reservations", icon: CalendarIcon },
 ]
 
 export function Sidebar() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [userRole, setUserRole] = useState<string | null>(null)
+  // Başlangıçta boş bir navigasyon menüsü ile başla
+  const [navigation, setNavigation] = useState<any[]>([])
   const pathname = usePathname()
 
   useEffect(() => {
-    setIsLoading(false)
+    // Kullanıcı rolünü al
+    const fetchUserRole = async () => {
+      try {
+        // Cookie'den token'ı al
+        const token = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('token='))
+          ?.split('=')[1]
+
+        if (token) {
+          try {
+            // Token'ı decode et
+            const base64Payload = token.split('.')[1];
+            if (base64Payload) {
+              const payload = JSON.parse(atob(base64Payload));
+              const role = payload.role;
+              setUserRole(role);
+              
+              console.log('Kullanıcı rolü:', role);
+              
+              // Kullanıcı rolüne göre menü öğelerini ayarla
+              if (role === "ADMIN" || role === "MANAGER") {
+                // Admin ve Manager için admin menülerini göster
+                console.log('Admin/Manager navigasyonu yükleniyor');
+                setNavigation(adminNavigation);
+              } else if (role === "RESIDENT") {
+                // Resident için resident menülerini göster
+                console.log('Resident navigasyonu yükleniyor');
+                setNavigation(residentNavigation);
+              } else {
+                // Bilinmeyen rol için varsayılan olarak boş menü göster
+                console.error('Bilinmeyen rol:', role);
+                setNavigation([]);
+              }
+            } else {
+              // Token formatı geçersiz, boş menü göster
+              console.error('Invalid token format');
+              setNavigation([]);
+            }
+          } catch (parseError) {
+            // Token parse hatası, boş menü göster
+            console.error('Error parsing token:', parseError);
+            setNavigation([]);
+          }
+        } else {
+          // Token yok, boş menü göster
+          console.error('Token bulunamadı');
+          setNavigation([]);
+        }
+      } catch (error) {
+        console.error('Error fetching user role:', error);
+        // Hata durumunda varsayılan menüyü göster
+        setNavigation(adminNavigation);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserRole();
   }, [])
 
+  // Yükleme durumunda veya navigasyon boşsa basit bir yükleme göstergesi göster
   if (isLoading) {
     return (
       <>
@@ -131,7 +203,8 @@ export function Sidebar() {
                       <li>
                         <ul role="list" className="-mx-2 space-y-1">
                           {navigation.map((item) => {
-                            const isActive = pathname === item.href
+                            const isActive = pathname === item.href || 
+                              (pathname.startsWith(item.href) && item.href !== "/")
                             return (
                               <li key={item.name}>
                                 <Link
@@ -178,7 +251,8 @@ export function Sidebar() {
               <li>
                 <ul role="list" className="-mx-2 space-y-1">
                   {navigation.map((item) => {
-                    const isActive = pathname === item.href
+                    const isActive = pathname === item.href || 
+                      (pathname.startsWith(item.href) && item.href !== "/")
                     return (
                       <li key={item.name}>
                         <Link
