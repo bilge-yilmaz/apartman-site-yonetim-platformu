@@ -20,85 +20,83 @@ import {
   TableRow,
 } from '@tremor/react'
 import { BanknotesIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
+import { useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 
 interface Payment {
-  id: string
+  _id: string
   month: string
   amount: number
   dueDate: string
-  status: 'paid' | 'pending' | 'overdue'
+  status: string
   paymentDate?: string
 }
 
 export default function ResidentPaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [currentDue, setCurrentDue] = useState(0)
   const [nextDueDate, setNextDueDate] = useState('')
+  const router = useRouter()
 
   useEffect(() => {
-    // Örnek veri yükleme (gerçek uygulamada API'den çekilecek)
-    const loadDummyData = () => {
-      const dummyPayments: Payment[] = [
-        {
-          id: '1',
-          month: 'Ocak 2025',
-          amount: 1200,
-          dueDate: '2025-01-05',
-          status: 'paid',
-          paymentDate: '2025-01-03',
-        },
-        {
-          id: '2',
-          month: 'Şubat 2025',
-          amount: 1200,
-          dueDate: '2025-02-05',
-          status: 'paid',
-          paymentDate: '2025-02-04',
-        },
-        {
-          id: '3',
-          month: 'Mart 2025',
-          amount: 1200,
-          dueDate: '2025-03-05',
-          status: 'paid',
-          paymentDate: '2025-03-02',
-        },
-        {
-          id: '4',
-          month: 'Nisan 2025',
-          amount: 1200,
-          dueDate: '2025-04-05',
-          status: 'paid',
-          paymentDate: '2025-04-01',
-        },
-        {
-          id: '5',
-          month: 'Mayıs 2025',
-          amount: 1200,
-          dueDate: '2025-05-05',
-          status: 'pending',
-        },
-        {
-          id: '6',
-          month: 'Haziran 2025',
-          amount: 1200,
-          dueDate: '2025-06-05',
-          status: 'pending',
-        },
-      ]
-      
-      setPayments(dummyPayments)
-      setCurrentDue(1200)
-      setNextDueDate('2025-05-05')
-      setLoading(false)
-    }
+    const fetchPayments = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch('/api/payments');
+        if (!response.ok) {
+          throw new Error('Ödemeler yüklenirken bir hata oluştu.');
+        }
+        const data: Payment[] = await response.json();
+        console.log('Fetched payments data:', data); // Log the raw data
+        setPayments(data);
 
-    // Simüle edilmiş veri yükleme gecikmesi
-    setTimeout(() => {
-      loadDummyData()
-    }, 1000)
-  }, [])
+        const pending = data.filter(p => p.status.toLowerCase() === 'pending');
+        const totalDue = pending.reduce((sum, p) => sum + p.amount, 0);
+        setCurrentDue(totalDue);
+
+        if (pending.length > 0) {
+          pending.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+          setNextDueDate(new Date(pending[0].dueDate).toLocaleDateString('tr-TR'));
+        } else {
+          setNextDueDate('-');
+        }
+
+      } catch (err: any) {
+        setError(err.message || 'Veri yüklenemedi.');
+        console.error("Fetch Error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPayments();
+
+  }, []);
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('tr-TR');
+  }
+
+  const getStatusBadge = (status: string) => {
+    const lowerCaseStatus = status.toLowerCase();
+    switch (lowerCaseStatus) {
+      case 'pending':
+        return <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">Bekliyor</span>;
+      case 'paid':
+        return <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">Ödendi</span>;
+      case 'overdue':
+        return <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700">Gecikti</span>;
+      default:
+        return <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">Bilinmiyor</span>;
+    }
+  }
+
+  const pendingPayments = payments.filter(payment => payment.status.toLowerCase() === 'pending')
+  const paidPayments = payments.filter(payment => payment.status.toLowerCase() === 'paid')
 
   if (loading) {
     return (
@@ -107,27 +105,6 @@ export default function ResidentPaymentsPage() {
       </div>
     )
   }
-
-  const formatDate = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric' }
-    return new Date(dateString).toLocaleDateString('tr-TR', options)
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return <Badge color="green">Ödendi</Badge>
-      case 'pending':
-        return <Badge color="yellow">Bekliyor</Badge>
-      case 'overdue':
-        return <Badge color="red">Gecikmiş</Badge>
-      default:
-        return <Badge color="gray">Bilinmiyor</Badge>
-    }
-  }
-
-  const pendingPayments = payments.filter(payment => payment.status === 'pending')
-  const paidPayments = payments.filter(payment => payment.status === 'paid')
 
   return (
     <div className="space-y-8 p-6">
@@ -148,7 +125,7 @@ export default function ResidentPaymentsPage() {
               <span className="text-2xl font-bold text-white">₺{currentDue.toLocaleString('tr-TR')}</span>
             </div>
             <Text className="mt-2 text-blue-100">
-              Son Ödeme Tarihi: {formatDate(nextDueDate)}
+              Son Ödeme Tarihi: {nextDueDate}
             </Text>
           </div>
           <div className="mt-4 md:mt-0">
@@ -194,32 +171,43 @@ export default function ResidentPaymentsPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {payments.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>{payment.month}</TableCell>
-                      <TableCell>₺{payment.amount.toLocaleString('tr-TR')}</TableCell>
-                      <TableCell>{formatDate(payment.dueDate)}</TableCell>
-                      <TableCell>
-                        {payment.paymentDate ? formatDate(payment.paymentDate) : '-'}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(payment.status)}</TableCell>
-                      <TableCell>
-                        {payment.status === 'pending' ? (
-                          <Button size="xs" color="blue">
-                            Öde
-                          </Button>
-                        ) : payment.status === 'paid' ? (
-                          <Button size="xs" variant="light" icon={ArrowDownTrayIcon}>
-                            Makbuz
-                          </Button>
-                        ) : (
-                          <Button size="xs" color="red">
-                            Öde
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {payments.map((payment) => {
+                    console.log('Rendering payment row:', payment); // Log payment object for this row
+                    return (
+                      <TableRow key={payment._id}>
+                        <TableCell>{payment.month}</TableCell>
+                        <TableCell>₺{payment.amount.toLocaleString('tr-TR')}</TableCell>
+                        <TableCell>{formatDate(payment.dueDate)}</TableCell>
+                        <TableCell>
+                          {payment.paymentDate ? formatDate(payment.paymentDate) : '-'}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                        <TableCell>
+                          {payment.status.toLowerCase() === 'pending' ? (
+                            <Button 
+                              size="xs" 
+                              color="blue"
+                              onClick={(event) => { 
+                                event.stopPropagation(); 
+                                console.log('Tüm Ödemeler - Ödeme Yap tıklandı, ID:', payment._id);
+                                router.push(`/resident/payments/${payment._id}/pay`);
+                              }}
+                            >
+                              Ödeme Yap
+                            </Button>
+                          ) : payment.status.toLowerCase() === 'paid' ? (
+                            <Button size="xs" variant="light" icon={ArrowDownTrayIcon}>
+                              Makbuz
+                            </Button>
+                          ) : (
+                            <Button size="xs" color="red">
+                              Öde
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </Card>
@@ -243,14 +231,22 @@ export default function ResidentPaymentsPage() {
                   </TableHead>
                   <TableBody>
                     {pendingPayments.map((payment) => (
-                      <TableRow key={payment.id}>
+                      <TableRow key={payment._id}>
                         <TableCell>{payment.month}</TableCell>
                         <TableCell>₺{payment.amount.toLocaleString('tr-TR')}</TableCell>
                         <TableCell>{formatDate(payment.dueDate)}</TableCell>
                         <TableCell>{getStatusBadge(payment.status)}</TableCell>
                         <TableCell>
-                          <Button size="xs" color="blue">
-                            Öde
+                          <Button 
+                            size="xs" 
+                            color="blue"
+                            onClick={(event) => { 
+                              event.stopPropagation(); 
+                              console.log('Bekleyen Ödemeler - Ödeme Yap tıklandı, ID:', payment._id);
+                              router.push(`/resident/payments/${payment._id}/pay`);
+                            }}
+                          >
+                            Ödeme Yap
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -285,7 +281,7 @@ export default function ResidentPaymentsPage() {
                   </TableHead>
                   <TableBody>
                     {paidPayments.map((payment) => (
-                      <TableRow key={payment.id}>
+                      <TableRow key={payment._id}>
                         <TableCell>{payment.month}</TableCell>
                         <TableCell>₺{payment.amount.toLocaleString('tr-TR')}</TableCell>
                         <TableCell>{formatDate(payment.paymentDate || '')}</TableCell>
