@@ -1,15 +1,38 @@
 import { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
-import { Text, Card, Button, Chip, Divider } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, Alert, ActivityIndicator, Animated, Dimensions } from 'react-native';
+import { Text, Card, Button, Chip, Divider, Surface, IconButton, Avatar } from 'react-native-paper';
 import { useLocalSearchParams, router } from 'expo-router';
 import { usePaymentsStore, Payment } from '../../../store/payments';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function PaymentDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getPaymentById, payments, isLoading, fetchPayments, makePayment } = usePaymentsStore();
   const [payment, setPayment] = useState<Payment | undefined>();
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(50));
+  
+  // Animasyon efektleri
+  useEffect(() => {
+    if (payment) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        })
+      ]).start();
+    }
+  }, [payment]);
 
   useEffect(() => {
     if (!id) return;
@@ -66,6 +89,32 @@ export default function PaymentDetailsScreen() {
         return '#757575';
     }
   };
+  
+  const getStatusGradient = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return ['#43A047', '#2E7D32'];
+      case 'PENDING':
+        return ['#FFB300', '#F57F17'];
+      case 'OVERDUE':
+        return ['#E53935', '#C62828'];
+      default:
+        return ['#757575', '#424242'];
+    }
+  };
+  
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return 'check-circle';
+      case 'PENDING':
+        return 'clock-outline';
+      case 'OVERDUE':
+        return 'alert-circle';
+      default:
+        return 'help-circle';
+    }
+  };
 
   const getStatusText = (status: string) => {
     switch (status) {
@@ -83,7 +132,9 @@ export default function PaymentDetailsScreen() {
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
+        <StatusBar style="dark" />
         <ActivityIndicator size="large" color="#1976D2" />
+        <Text style={styles.loadingText}>Ödeme bilgileri yükleniyor...</Text>
       </View>
     );
   }
@@ -91,8 +142,16 @@ export default function PaymentDetailsScreen() {
   if (!payment) {
     return (
       <View style={styles.errorContainer}>
+        <StatusBar style="dark" />
+        <MaterialCommunityIcons name="alert-circle-outline" size={64} color="#F44336" />
         <Text style={styles.errorText}>Ödeme bilgisi bulunamadı</Text>
-        <Button mode="contained" onPress={() => router.back()}>
+        <Button 
+          mode="contained" 
+          onPress={() => router.back()}
+          style={styles.errorButton}
+          contentStyle={styles.buttonContent}
+          labelStyle={styles.buttonLabel}
+        >
           Geri Dön
         </Button>
       </View>
@@ -100,97 +159,194 @@ export default function PaymentDetailsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <Card style={styles.card}>
-        <Card.Content>
-          <View style={styles.header}>
-            <Text style={styles.title}>
-              {format(new Date(payment.dueDate), 'MMMM yyyy', { locale: tr })} Aidatı
-            </Text>
-            <Chip
-              style={{
-                backgroundColor: getStatusColor(payment.status) + '20',
-              }}
-              textStyle={{ color: getStatusColor(payment.status) }}
+    <>
+      <StatusBar style="light" />
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        <Animated.View style={{
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }],
+        }}>
+          <Surface style={styles.headerCard}>
+            <LinearGradient
+              colors={['#1976D2', '#0D47A1']}
+              style={styles.headerGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
             >
-              {getStatusText(payment.status)}
-            </Chip>
-          </View>
-
-          <Divider style={styles.divider} />
-
-          <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Tutar</Text>
-              <Text style={styles.amount}>{payment.amount} TL</Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Son Ödeme Tarihi</Text>
-              <Text style={styles.infoValue}>
-                {format(new Date(payment.dueDate), 'dd MMM yyyy', { locale: tr })}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Daire</Text>
-              <Text style={styles.infoValue}>
-                {payment.block}-{payment.apartmentNo}
-              </Text>
-            </View>
-
-            {payment.status === 'COMPLETED' && payment.paymentDate && (
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Ödeme Tarihi</Text>
-                <Text style={styles.infoValue}>
-                  {format(new Date(payment.paymentDate), 'dd MMM yyyy', { locale: tr })}
-                </Text>
+              <View style={styles.headerContent}>
+                <View style={styles.headerTopRow}>
+                  <IconButton
+                    icon="arrow-left"
+                    iconColor="white"
+                    size={24}
+                    onPress={() => router.back()}
+                    style={styles.backButton}
+                  />
+                  <Text style={styles.headerTitle}>Ödeme Detayı</Text>
+                </View>
+                
+                <View style={styles.amountContainer}>
+                  <Text style={styles.amountLabel}>Tutar</Text>
+                  <Text style={styles.amountValue}>{payment.amount} ₺</Text>
+                </View>
+                
+                <View style={styles.headerChipRow}>
+                  <Chip
+                    mode="outlined"
+                    style={styles.headerChip}
+                    textStyle={styles.headerChipText}
+                    icon={() => (
+                      <MaterialCommunityIcons
+                        name={getStatusIcon(payment.status)}
+                        size={16}
+                        color="white"
+                      />
+                    )}
+                  >
+                    {getStatusText(payment.status)}
+                  </Chip>
+                  
+                  <Text style={styles.dateText}>
+                    {format(new Date(payment.dueDate), 'MMMM yyyy', { locale: tr })}
+                  </Text>
+                </View>
               </View>
-            )}
+            </LinearGradient>
+          </Surface>
+          
+          <Card style={styles.card}>
+            <Card.Content>
+          <View style={styles.detailsSection}>
+            <Text style={styles.sectionTitle}>Ödeme Bilgileri</Text>
           </View>
 
-          {payment.paymentMethod && (
+          <View style={styles.infoCard}>
             <View style={styles.infoRow}>
               <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Ödeme Yöntemi</Text>
-                <Text style={styles.infoValue}>{payment.paymentMethod}</Text>
+                <MaterialCommunityIcons name="calendar" size={20} color="#1976D2" style={styles.infoIcon} />
+                <View>
+                  <Text style={styles.infoLabel}>Son Ödeme Tarihi</Text>
+                  <Text style={styles.infoValue}>
+                    {format(new Date(payment.dueDate), 'dd MMM yyyy', { locale: tr })}
+                  </Text>
+                </View>
               </View>
             </View>
-          )}
 
-          {payment.description && (
+          <Divider style={styles.infoDivider} />
+            
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <MaterialCommunityIcons name="home" size={20} color="#1976D2" style={styles.infoIcon} />
+              <View>
+                <Text style={styles.infoLabel}>Daire</Text>
+                <Text style={styles.infoValue}>
+                  {payment.block}-{payment.apartmentNo}
+                </Text>
+              </View>
+            </View>
+          </View>
+            
+          {payment.status === 'COMPLETED' && payment.paymentDate && (
             <>
-              <Divider style={styles.divider} />
-              <Text style={styles.sectionTitle}>Açıklama</Text>
-              <Text style={styles.description}>{payment.description}</Text>
+              <Divider style={styles.infoDivider} />
+              <View style={styles.infoRow}>
+                <View style={styles.infoItem}>
+                  <MaterialCommunityIcons name="calendar-check" size={20} color="#4CAF50" style={styles.infoIcon} />
+                  <View>
+                    <Text style={styles.infoLabel}>Ödeme Tarihi</Text>
+                    <Text style={styles.infoValue}>
+                      {format(new Date(payment.paymentDate), 'dd MMM yyyy', { locale: tr })}
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </>
           )}
 
+          {payment.paymentMethod && (
+            <>
+              <Divider style={styles.infoDivider} />
+              <View style={styles.infoRow}>
+                <View style={styles.infoItem}>
+                  <MaterialCommunityIcons name="credit-card" size={20} color="#1976D2" style={styles.infoIcon} />
+                  <View>
+                    <Text style={styles.infoLabel}>Ödeme Yöntemi</Text>
+                    <Text style={styles.infoValue}>{payment.paymentMethod}</Text>
+                  </View>
+                </View>
+              </View>
+            </>
+          )}
+          </View>
+
+          {payment.description && (
+            <View style={styles.descriptionSection}>
+              <Text style={styles.sectionTitle}>Açıklama</Text>
+              <Surface style={styles.descriptionCard}>
+                <Text style={styles.description}>{payment.description}</Text>
+              </Surface>
+            </View>
+          )}
+
           {payment.status === 'PENDING' && (
-            <Button
-              mode="contained"
-              onPress={handlePayment}
-              style={styles.payButton}
-            >
-              Ödeme Yap
-            </Button>
+            <View style={styles.actionSection}>
+              <Button
+                mode="contained"
+                onPress={handlePayment}
+                style={styles.payButton}
+                contentStyle={styles.buttonContent}
+                labelStyle={styles.buttonLabel}
+                icon="credit-card-outline"
+              >
+                Ödeme Yap
+              </Button>
+            </View>
           )}
 
           {payment.status === 'COMPLETED' && (
-            <View style={styles.receiptContainer}>
-              <Text style={styles.receiptTitle}>Ödeme Bilgileri</Text>
-              <Text style={styles.receiptText}>
-                {payment.amount} TL tutarındaki {format(new Date(payment.dueDate), 'MMMM yyyy', { locale: tr })} aidatı, {format(new Date(payment.paymentDate!), 'dd MMM yyyy', { locale: tr })} tarihinde {payment.paymentMethod} yöntemiyle ödenmiştir.
-              </Text>
+            <View style={styles.receiptSection}>
+              <Surface style={styles.receiptContainer}>
+                <View style={styles.receiptHeader}>
+                  <MaterialCommunityIcons name="check-circle" size={24} color="#4CAF50" />
+                  <Text style={styles.receiptTitle}>Ödeme Makbuzu</Text>
+                </View>
+                <Divider style={styles.receiptDivider} />
+                <Text style={styles.receiptText}>
+                  {payment.amount} ₺ tutarındaki {format(new Date(payment.dueDate), 'MMMM yyyy', { locale: tr })} aidatı, {format(new Date(payment.paymentDate!), 'dd MMM yyyy', { locale: tr })} tarihinde {payment.paymentMethod} yöntemiyle ödenmiştir.
+                </Text>
+                <View style={styles.receiptActions}>
+                  <Button
+                    mode="outlined"
+                    icon="share-variant"
+                    style={styles.receiptButton}
+                    labelStyle={{ fontSize: 12 }}
+                    onPress={() => Alert.alert('Bilgi', 'Makbuz paylaşma özelliği yakında eklenecektir.')}
+                  >
+                    Paylaş
+                  </Button>
+                  <Button
+                    mode="outlined"
+                    icon="download"
+                    style={styles.receiptButton}
+                    labelStyle={{ fontSize: 12 }}
+                    onPress={() => Alert.alert('Bilgi', 'Makbuz indirme özelliği yakında eklenecektir.')}
+                  >
+                    İndir
+                  </Button>
+                </View>
+              </Surface>
             </View>
           )}
         </Card.Content>
       </Card>
+      </Animated.View>
     </ScrollView>
+    </>
   );
 }
+
+const { width } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   container: {
@@ -198,50 +354,136 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   contentContainer: {
-    padding: 16,
     paddingBottom: 32,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#1976D2',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
+    backgroundColor: '#f5f5f5',
   },
   errorText: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#757575',
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  errorButton: {
+    borderRadius: 8,
+    elevation: 2,
+    backgroundColor: '#1976D2',
+  },
+  buttonContent: {
+    height: 48,
+    paddingHorizontal: 16,
+  },
+  buttonLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  headerCard: {
+    elevation: 4,
+    borderRadius: 0,
     marginBottom: 16,
   },
-  card: {
-    elevation: 2,
+  headerGradient: {
+    borderRadius: 0,
+    paddingTop: 40, // Status bar height
+    paddingBottom: 24,
   },
-  header: {
+  headerContent: {
+    paddingHorizontal: 16,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  backButton: {
+    margin: 0,
+    marginRight: 8,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  amountContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  amountLabel: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 4,
+  },
+  amountValue: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  headerChipRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    flex: 1,
-    marginRight: 8,
+  headerChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  headerChipText: {
+    color: 'white',
+  },
+  dateText: {
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '500',
     textTransform: 'capitalize',
   },
-  divider: {
-    marginVertical: 16,
+  card: {
+    elevation: 2,
+    margin: 16,
+    borderRadius: 12,
+  },
+  detailsSection: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    color: '#424242',
+  },
+  infoCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 4,
+    elevation: 1,
   },
   infoRow: {
     flexDirection: 'row',
-    marginBottom: 16,
+    padding: 12,
   },
   infoItem: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  infoIcon: {
+    marginRight: 12,
   },
   infoLabel: {
     fontSize: 14,
@@ -250,41 +492,73 @@ const styles = StyleSheet.create({
   },
   infoValue: {
     fontSize: 16,
+    color: '#212121',
+    fontWeight: '500',
   },
-  amount: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1976D2',
+  infoDivider: {
+    height: 1,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
+  descriptionSection: {
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  descriptionCard: {
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: '#F5F5F5',
+    elevation: 1,
   },
   description: {
     fontSize: 16,
     lineHeight: 24,
+    color: '#424242',
+  },
+  actionSection: {
+    marginTop: 24,
   },
   payButton: {
+    borderRadius: 8,
+    elevation: 2,
+    backgroundColor: '#1976D2',
+  },
+  receiptSection: {
     marginTop: 24,
   },
   receiptContainer: {
-    marginTop: 24,
     padding: 16,
-    backgroundColor: '#e8f5e9',
-    borderRadius: 8,
+    backgroundColor: '#F9FFF9',
+    borderRadius: 12,
+    elevation: 1,
     borderLeftWidth: 4,
     borderLeftColor: '#4CAF50',
   },
-  receiptTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  receiptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 8,
+  },
+  receiptTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 8,
     color: '#2E7D32',
   },
+  receiptDivider: {
+    marginVertical: 12,
+    backgroundColor: '#E8F5E9',
+  },
   receiptText: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
     color: '#1B5E20',
+    marginBottom: 16,
+  },
+  receiptActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  receiptButton: {
+    marginLeft: 8,
+    borderColor: '#4CAF50',
   },
 });
