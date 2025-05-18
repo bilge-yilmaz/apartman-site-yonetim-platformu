@@ -1,104 +1,72 @@
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
-import { Card, Title, Paragraph, Chip, useTheme } from 'react-native-paper';
-import { useEffect, useState } from 'react';
-import { apiServices } from '../../utils/api-services';
-
-type Announcement = {
-  _id: string;
-  title: string;
-  content: string;
-  category: string;
-  priority: string;
-  startDate: string;
-  endDate: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { Card, Title, Paragraph, Chip, useTheme, Button } from 'react-native-paper';
+import { useEffect, useCallback } from 'react';
+import { useAnnouncementsStore } from '../../store/announcementsStore';
+import { Announcement } from '../../services/api';
+import { router } from 'expo-router';
 
 export default function AnnouncementsScreen() {
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const theme = useTheme();
+  const {
+    announcements,
+    isLoading,
+    error,
+    fetchAnnouncements,
+  } = useAnnouncementsStore();
 
-  const fetchAnnouncements = async () => {
-    try {
-      setLoading(true);
-      const data = await apiServices.announcements.getAll();
-      console.log('Duyurular alındı:', data);
-      setAnnouncements(data);
-    } catch (error) {
-      console.error('Duyurular alınırken hata:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchAnnouncements();
-    setRefreshing(false);
-  };
+  const loadAnnouncements = useCallback(async () => {
+    await fetchAnnouncements({ isActive: true });
+  }, [fetchAnnouncements]);
 
   useEffect(() => {
-    fetchAnnouncements();
-  }, []);
+    loadAnnouncements();
+  }, [loadAnnouncements]);
 
-  const getPriorityColor = (priority: string) => {
+  useEffect(() => {
+    if (error) {
+      Alert.alert('Hata', error);
+    }
+  }, [error]);
+
+  const getPriorityColor = (priority?: string) => {
     switch (priority) {
-      case 'URGENT':
-        return '#FF5252';
-      case 'HIGH':
-        return '#FF9800';
-      case 'MEDIUM':
-        return '#2196F3';
-      case 'LOW':
-        return '#4CAF50';
-      default:
-        return '#757575';
+      case 'URGENT': return '#FF5252';
+      case 'HIGH': return '#FF9800';
+      case 'MEDIUM': return '#2196F3';
+      case 'LOW': return '#4CAF50';
+      default: return '#757575';
     }
   };
 
-  const getCategoryLabel = (category: string) => {
+  const getCategoryLabel = (category?: string) => {
     switch (category) {
-      case 'GENERAL':
-        return 'Genel';
-      case 'MAINTENANCE':
-        return 'Bakım';
-      case 'PAYMENT':
-        return 'Ödeme';
-      case 'EVENT':
-        return 'Etkinlik';
-      default:
-        return category;
+      case 'GENERAL': return 'Genel';
+      case 'MAINTENANCE': return 'Bakım';
+      case 'PAYMENT': return 'Ödeme';
+      case 'EVENT': return 'Etkinlik';
+      default: return category || 'Diğer';
     }
   };
 
   const renderItem = ({ item }: { item: Announcement }) => (
-    <Card style={styles.card}>
+    <Card 
+      style={styles.card} 
+      onPress={() => router.push(`/announcements/${item._id}` as any)}
+    >
       <Card.Content>
         <Title>{item.title}</Title>
         <View style={styles.chipContainer}>
-          <Chip 
-            style={[styles.chip, { backgroundColor: getPriorityColor(item.priority) + '20' }]}
-            textStyle={{ color: getPriorityColor(item.priority) }}
-          >
-            {item.priority === 'URGENT' ? 'Acil' : 
-             item.priority === 'HIGH' ? 'Yüksek' :
-             item.priority === 'MEDIUM' ? 'Orta' : 'Düşük'}
-          </Chip>
-          <Chip style={styles.chip}>{getCategoryLabel(item.category)}</Chip>
+          {item.category && <Chip style={styles.chip}>{getCategoryLabel(item.category)}</Chip>}
         </View>
-        <Paragraph style={styles.content}>{item.content}</Paragraph>
+        <Paragraph style={styles.content} numberOfLines={3}>{item.content}</Paragraph>
         <Text style={styles.date}>
-          {new Date(item.startDate).toLocaleDateString('tr-TR')} - {new Date(item.endDate).toLocaleDateString('tr-TR')}
+          Yayınlanma: {new Date(item.createdAt).toLocaleDateString('tr-TR')}
         </Text>
       </Card.Content>
     </Card>
   );
 
-  if (loading && !refreshing) {
+  if (isLoading && announcements.length === 0) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -109,9 +77,12 @@ export default function AnnouncementsScreen() {
 
   return (
     <View style={styles.container}>
-      {announcements.length === 0 ? (
+      {announcements.length === 0 && !isLoading ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>Henüz duyuru bulunmuyor.</Text>
+          <Button onPress={loadAnnouncements} style={{marginTop: 10}} mode="outlined">
+            Tekrar Dene
+          </Button>
         </View>
       ) : (
         <FlatList
@@ -121,8 +92,8 @@ export default function AnnouncementsScreen() {
           contentContainerStyle={styles.listContainer}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
+              refreshing={isLoading}
+              onRefresh={loadAnnouncements}
               colors={[theme.colors.primary]}
             />
           }

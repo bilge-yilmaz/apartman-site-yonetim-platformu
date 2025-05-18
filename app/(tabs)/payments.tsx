@@ -1,40 +1,58 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert } from 'react-native';
-import { Text, Card, Button, ActivityIndicator, Chip, Divider, FAB } from 'react-native-paper';
+import { Text, Card, Button, ActivityIndicator, Chip, Divider, useTheme, MD3Theme } from 'react-native-paper';
 import { router } from 'expo-router';
-import { usePaymentsStore, Payment } from '../../store/payments';
+import { usePaymentsStore } from '../../store/paymentsStore';
+import { Payment } from '../../services/api';
+import { useUserStore } from '../../store/user';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 
 export default function PaymentsScreen() {
-  const { payments, isLoading, fetchPayments, makePayment } = usePaymentsStore();
+  const theme = useTheme();
+  const styles = createStyles(theme);
+  const { user: currentUser } = useUserStore();
+  const { payments, isLoading, error, fetchPayments, markAsPaid } = usePaymentsStore();
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED'>('ALL');
+  const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'PENDING' | 'PAID'>('ALL');
+
+  const loadPayments = useCallback(async () => {
+    if (currentUser) {
+      await fetchPayments({ userId: currentUser.id });
+    }
+  }, [fetchPayments, currentUser]);
 
   useEffect(() => {
-    fetchPayments();
-  }, []);
+    loadPayments();
+  }, [loadPayments]);
+
+  useEffect(() => {
+    if (error) {
+      Alert.alert('Hata', error);
+    }
+  }, [error]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchPayments();
+    await loadPayments();
     setRefreshing(false);
   };
 
   const handlePayment = (payment: Payment) => {
     Alert.alert(
-      'Ödeme Yap',
-      `${payment.amount} TL tutarındaki aidatı ödemek istediğinize emin misiniz?`,
+      'Ödeme İşlemi',
+      `${payment.amount} TL tutarındaki ödemeyi (\`${payment.description}\`) 'Ödendi' olarak işaretlemek istediğinize emin misiniz?`,
       [
         { text: 'İptal', style: 'cancel' },
         {
-          text: 'Ödeme Yap',
+          text: 'Evet, Ödendi İşaretle',
           onPress: async () => {
             try {
-              await makePayment(payment._id, 'ONLINE');
-              Alert.alert('Başarılı', 'Ödeme işleminiz tamamlandı');
-            } catch (error) {
-              Alert.alert('Hata', 'Ödeme işlemi sırasında bir hata oluştu');
+              await markAsPaid(payment._id, 'USER_MARKED_AS_PAID');
+              Alert.alert('Başarılı', 'Ödeme durumu güncellendi.');
+              loadPayments();
+            } catch (err: any) {
+              Alert.alert('Hata', err.message || 'Ödeme durumu güncellenirken bir hata oluştu');
             }
           },
         },
@@ -47,44 +65,34 @@ export default function PaymentsScreen() {
     return payment.status === selectedFilter;
   });
 
-  const getStatusColor = (status: string) => {
+  const getStatusChipStyle = (status: Payment['status']) => {
     switch (status) {
-      case 'COMPLETED':
-        return '#4CAF50';
-      case 'PENDING':
-        return '#FFC107';
-      case 'OVERDUE':
-        return '#F44336';
-      default:
-        return '#757575';
+      case 'PAID': return { backgroundColor: theme.colors.surfaceVariant, textColor: theme.colors.primary };
+      case 'PENDING': return { backgroundColor: theme.colors.surfaceVariant, textColor: theme.colors.tertiary };
+      case 'OVERDUE': return { backgroundColor: theme.colors.errorContainer, textColor: theme.colors.error };
+      case 'CANCELLED': return { backgroundColor: theme.colors.onSurfaceDisabled, textColor: theme.colors.surfaceDisabled };
+      default: return { backgroundColor: theme.colors.backdrop, textColor: theme.colors.surfaceDisabled};
     }
   };
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: Payment['status']) => {
     switch (status) {
-      case 'COMPLETED':
-        return 'Ödendi';
-      case 'PENDING':
-        return 'Bekliyor';
-      case 'OVERDUE':
-        return 'Gecikmiş';
-      default:
-        return status;
+      case 'PAID': return 'Ödendi';
+      case 'PENDING': return 'Bekliyor';
+      case 'OVERDUE': return 'Gecikmiş';
+      case 'CANCELLED': return 'İptal';
+      default: return status;
     }
   };
 
   const renderPaymentItem = ({ item }: { item: Payment }) => (
-    <Card style={styles.card} onPress={() => router.push(`/payments/details/${item._id}`)}>
+    <Card style={styles.card} onPress={() => router.push(`/payments/details/${item._id}` as any)}>
       <Card.Content>
         <View style={styles.cardHeader}>
-          <Text style={styles.month}>
-            {format(new Date(item.dueDate), 'MMMM yyyy', { locale: tr })}
-          </Text>
+          <Text style={styles.descriptionText}>{item.description}</Text>
           <Chip
-            style={{
-              backgroundColor: getStatusColor(item.status) + '20',
-            }}
-            textStyle={{ color: getStatusColor(item.status) }}
+            style={[styles.statusChip, { backgroundColor: getStatusChipStyle(item.status).backgroundColor }]}
+            textStyle={{ color: getStatusChipStyle(item.status).textColor, fontWeight: 'bold', fontSize: 12 }}
           >
             {getStatusText(item.status)}
           </Chip>
@@ -92,37 +100,47 @@ export default function PaymentsScreen() {
 
         <Divider style={styles.divider} />
 
-        <View style={styles.cardBody}>
-          <View>
-            <Text style={styles.label}>Tutar</Text>
-            <Text style={styles.amount}>{item.amount} TL</Text>
+        <View style={styles.cardBodyRow}>
+          <View style={styles.infoItem}>
+            <Text style={styles.label}>Tutar:</Text>
+            <Text style={[styles.value, styles.amountValue]}>{item.amount.toFixed(2)} TL</Text>
           </View>
-
-          <View>
-            <Text style={styles.label}>Son Ödeme</Text>
-            <Text style={styles.date}>
+          <View style={styles.infoItem}>
+            <Text style={styles.label}>Son Ödeme Tarihi:</Text>
+            <Text style={styles.value}>
               {format(new Date(item.dueDate), 'dd MMM yyyy', { locale: tr })}
             </Text>
           </View>
         </View>
 
-        {item.status === 'PENDING' && (
-          <Button
-            mode="contained"
-            onPress={() => handlePayment(item)}
-            style={styles.payButton}
-          >
-            Ödeme Yap
-          </Button>
+        {item.status === 'PAID' && item.paymentDate && (
+          <View style={styles.cardBodyRow}>
+            <View style={styles.infoItem}>
+              <Text style={styles.label}>Ödeme Tarihi:</Text>
+              <Text style={styles.value}>
+                {format(new Date(item.paymentDate), 'dd MMM yyyy', { locale: tr })}
+              </Text>
+            </View>
+             {item.paymentMethod && (
+              <View style={styles.infoItem}>
+                <Text style={styles.label}>Ödeme Yöntemi:</Text>
+                <Text style={styles.value}>{item.paymentMethod.replace('_', ' ')}</Text>
+              </View>
+            )}
+          </View>
         )}
 
-        {item.status === 'COMPLETED' && item.paymentDate && (
-          <View style={styles.paymentInfo}>
-            <Text style={styles.paymentLabel}>Ödeme Tarihi:</Text>
-            <Text style={styles.paymentValue}>
-              {format(new Date(item.paymentDate), 'dd MMM yyyy', { locale: tr })}
-            </Text>
-          </View>
+        {item.status === 'PENDING' && currentUser?.id === item.userId && (
+          <Button
+            mode="contained"
+            icon="check-circle-outline"
+            onPress={() => handlePayment(item)}
+            style={styles.actionButton}
+            labelStyle={styles.actionButtonLabel}
+            theme={{ roundness: 2 }}
+          >
+            Ödendi İşaretle
+          </Button>
         )}
       </Card.Content>
     </Card>
@@ -131,61 +149,33 @@ export default function PaymentsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.filterContainer}>
-        <TouchableOpacity
-          style={[
-            styles.filterButton,
-            selectedFilter === 'ALL' && styles.selectedFilter,
-          ]}
-          onPress={() => setSelectedFilter('ALL')}
-        >
-          <Text
-            style={[
-              styles.filterText,
-              selectedFilter === 'ALL' && styles.selectedFilterText,
-            ]}
-          >
-            Tümü
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.filterButton,
-            selectedFilter === 'PENDING' && styles.selectedFilter,
-          ]}
-          onPress={() => setSelectedFilter('PENDING')}
-        >
-          <Text
-            style={[
-              styles.filterText,
-              selectedFilter === 'PENDING' && styles.selectedFilterText,
-            ]}
-          >
-            Bekleyen
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.filterButton,
-            selectedFilter === 'COMPLETED' && styles.selectedFilter,
-          ]}
-          onPress={() => setSelectedFilter('COMPLETED')}
-        >
-          <Text
-            style={[
-              styles.filterText,
-              selectedFilter === 'COMPLETED' && styles.selectedFilterText,
-            ]}
-          >
-            Ödenen
-          </Text>
-        </TouchableOpacity>
+        {(['ALL', 'PENDING', 'PAID'] as const).map((filter) => {
+          const isActive = selectedFilter === filter;
+          return (
+            <TouchableOpacity
+              key={filter}
+              style={[
+                styles.filterButton,
+                isActive && { backgroundColor: theme.colors.primaryContainer },
+              ]}
+              onPress={() => setSelectedFilter(filter)}
+            >
+              <Text
+                style={[
+                  styles.filterText,
+                  isActive && { color: theme.colors.onPrimaryContainer, fontWeight: 'bold' },
+                ]}
+              >
+                {filter === 'ALL' ? 'Tümü' : filter === 'PENDING' ? 'Bekleyen' : 'Ödenen'}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      {isLoading && !refreshing ? (
+      {isLoading && payments.length === 0 ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#1976D2" />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       ) : filteredPayments.length > 0 ? (
         <FlatList
@@ -194,116 +184,142 @@ export default function PaymentsScreen() {
           keyExtractor={(item) => item._id}
           contentContainerStyle={styles.listContainer}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl 
+              refreshing={isLoading || refreshing}
+              onRefresh={onRefresh} 
+              colors={[theme.colors.primary]} 
+              tintColor={theme.colors.primary}
+            />
           }
         />
       ) : (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>
             {selectedFilter === 'PENDING'
-              ? 'Bekleyen aidat bulunmamaktadır.'
-              : selectedFilter === 'COMPLETED'
-              ? 'Ödenmiş aidat bulunmamaktadır.'
-              : 'Aidat kaydı bulunmamaktadır.'}
+              ? 'Bekleyen ödeme/aidat bulunmamaktadır.'
+              : selectedFilter === 'PAID'
+              ? 'Ödenmiş kayıt bulunmamaktadır.'
+              : 'Ödeme/aidat kaydı bulunmamaktadır.'}
           </Text>
+          <Button onPress={loadPayments} style={{marginTop: 10}} mode="outlined">Tekrar Dene</Button>
         </View>
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: MD3Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.surfaceVariant,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: theme.colors.surfaceVariant,
   },
   listContainer: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
   },
   card: {
     marginBottom: 16,
     elevation: 2,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    paddingBottom: 10,
   },
-  month: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    textTransform: 'capitalize',
+  descriptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    flexShrink: 1,
+    color: theme.colors.onSurface,
+    marginRight: 8,
+  },
+  statusChip: {
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   divider: {
-    marginVertical: 12,
+    marginVertical: 10,
+    backgroundColor: '#E0E0E0',
   },
-  cardBody: {
+  cardBodyRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  infoItem: {
+    flex: 1,
+    alignItems: 'flex-start',
+    paddingRight: 8,
   },
   label: {
-    fontSize: 14,
-    color: '#757575',
+    fontSize: 12,
+    color: '#667085',
     marginBottom: 4,
   },
-  amount: {
-    fontSize: 20,
+  value: {
+    fontSize: 14,
+    color: '#333D4A',
+    fontWeight: '500',
+  },
+  amountValue: {
+    color: theme.colors.error,
     fontWeight: 'bold',
   },
-  date: {
-    fontSize: 16,
+  actionButton: {
+    marginTop: 16,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 8,
   },
-  payButton: {
-    marginTop: 12,
-  },
-  paymentInfo: {
-    marginTop: 12,
-    flexDirection: 'row',
-  },
-  paymentLabel: {
+  actionButtonLabel: {
     fontSize: 14,
-    color: '#757575',
-    marginRight: 8,
-  },
-  paymentValue: {
-    fontSize: 14,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    backgroundColor: 'white',
-    elevation: 2,
-  },
-  filterButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginRight: 8,
-  },
-  selectedFilter: {
-    backgroundColor: '#1976D2',
-  },
-  filterText: {
-    color: '#757575',
-  },
-  selectedFilterText: {
-    color: 'white',
+    fontWeight: '500',
+    color: theme.colors.onPrimary,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 16,
+    padding: 20,
+    backgroundColor: theme.colors.surfaceVariant,
   },
   emptyText: {
     fontSize: 16,
-    color: '#757575',
+    color: '#667085',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  filterButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  filterText: {
+    fontSize: 14,
+    color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
   },
 });
+

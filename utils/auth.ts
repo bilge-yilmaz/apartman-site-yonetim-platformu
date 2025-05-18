@@ -1,5 +1,7 @@
 import axios from 'axios';
 import storage, { User } from './storage';
+import { storeToken as saveTokenToSecureStore, TOKEN_KEY } from '../services/api';
+import * as SecureStore from 'expo-secure-store';
 
 // API URL - Gerçek uygulamada doğru API URL'sini ortama göre ayarla
 // Android emülatör için 10.0.2.2 IP adresini kullan
@@ -51,7 +53,7 @@ export const decodeToken = (token: string): User | null => {
 // Auth servisi
 export const authService = {
   // Giriş yapma
-  async login(email: string, password: string): Promise<{ success: boolean; message?: string }> {
+  async login(email: string, password: string): Promise<{ success: boolean; message?: string; token?: string; user?: User }> {
     try {
       console.log(`Giriş denemesi: ${email} - API URL: ${API_URL}/api/auth/login`);
       
@@ -78,52 +80,30 @@ export const authService = {
       console.log('API yanıtı:', response.data);
       
       // Başarılı yanıt kontrolü
-      if (response.data && response.data.success) {
-        console.log('Yanıt içeriği:', response.data);
-        
-        // Kullanıcı bilgilerini al
-        const user = response.data.user;
-        
-        // Kullanıcı bilgilerini oluştur
+      if (response.data && response.data.success && response.data.token) {
+        const userFromApi = response.data.user;
+        const tokenFromApi = response.data.token;
+
         const userData: User = {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          isActive: true,
+          id: userFromApi.id,
+          name: userFromApi.name,
+          email: userFromApi.email,
+          role: userFromApi.role,
+          isActive: userFromApi.isActive,
+          ...(userFromApi.block && { block: userFromApi.block }),
+          ...(userFromApi.apartmentNo && { apartmentNo: userFromApi.apartmentNo }),
         };
         
-        // Blok ve daire numarası varsa ekle
-        if (user.block) userData.block = user.block;
-        if (user.apartmentNo) userData.apartmentNo = user.apartmentNo;
+        await storage.setUser(userData);
         
-        // Genişletilmiş kullanıcı bilgileri
-        const extendedUserData = {
-          ...userData,
-          phone: '+90 555 123 4567',
-          address: 'Apartman Sitesi, A Blok, No: 1',
-          notificationPreferences: {
-            email: true,
-            push: true,
-            sms: false
-          },
-          lastLogin: new Date().toISOString(),
-          createdAt: new Date('2025-01-01').toISOString(),
-          updatedAt: new Date().toISOString()
-        };
+        await SecureStore.setItemAsync(TOKEN_KEY, tokenFromApi);
         
-        // Kullanıcı bilgilerini sakla
-        await storage.setUser(extendedUserData);
+        console.log('Login successful, token saved to SecureStore.');
         
-        // Basit bir token oluştur ve sakla
-        const token = `token_${user.id}`;
-        await storage.setToken(token);
-        
-        console.log('Giriş başarılı, genişletilmiş kullanıcı bilgileri kaydedildi');
-        return { success: true };
+        return { success: true, token: tokenFromApi, user: userData };
       }
       
-      return { success: false, message: 'Giriş başarısız' };
+      return { success: false, message: response.data.error || 'Giriş başarısız' };
     } catch (error) {
       console.error('Login error:', error);
       
@@ -137,10 +117,11 @@ export const authService = {
         console.error('Hata detayları:', error instanceof Error ? error.message : 'Detay yok');
       }
       
-      // TypeScript hatasını düzeltmek için error tipini kontrol et
       let errorMessage = 'Giriş yapılırken bir hata oluştu';
       
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
+      if (axios.isAxiosError(error) && error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (axios.isAxiosError(error) && error.response?.data?.message) {
         errorMessage = error.response.data.message;
       } else if (error instanceof Error) {
         errorMessage = error.message;
@@ -155,12 +136,13 @@ export const authService = {
 
   // Çıkış yapma
   async logout(): Promise<void> {
-    await storage.logout();
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await storage.removeUser();
   },
 
   // Kullanıcı oturum durumunu kontrol etme
   async isAuthenticated(): Promise<boolean> {
-    const token = await storage.getToken();
+    const token = await SecureStore.getItemAsync(TOKEN_KEY);
     return !!token;
   },
 
@@ -171,7 +153,7 @@ export const authService = {
 
   // API istekleri için axios instance oluşturma
   async getAuthenticatedAxiosInstance() {
-    const token = await storage.getToken();
+    const token = await SecureStore.getItemAsync(TOKEN_KEY);
     
     return axios.create({
       baseURL: API_URL,

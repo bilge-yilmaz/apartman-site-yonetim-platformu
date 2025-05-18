@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+import { TOKEN_KEY } from '../services/api';
 
 // Storage keys
 const KEYS = {
@@ -74,6 +76,7 @@ export const storage = {
   },
 
   // Auth specific methods
+  /*
   async getToken(): Promise<string | null> {
     return this.get<string>(KEYS.AUTH_TOKEN);
   },
@@ -85,6 +88,7 @@ export const storage = {
   async removeToken() {
     return this.remove(KEYS.AUTH_TOKEN);
   },
+  */
 
   // User data methods
   async getUser(): Promise<User | null> {
@@ -157,7 +161,7 @@ export const storage = {
 
   // Logout helper - clears auth data but keeps settings
   async logout() {
-    await this.removeToken();
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
     await this.removeUser();
   },
 };
