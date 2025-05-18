@@ -230,4 +230,92 @@ export const deletePayment = async (id: string): Promise<{ message: string }> =>
   }
 };
 
+// REZERVASYONLAR (RESERVATIONS) API
+
+// Tesis tipi
+export interface Facility {
+  _id: string;
+  name: string;
+  description: string;
+  openingHour: number;
+  closingHour: number;
+  maxReservationHours: number;
+  image?: string;
+  isAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Rezervasyon tipi
+export interface Reservation {
+  _id: string;
+  userId: string;
+  facilityId: string;
+  facilityName: string;
+  startTime: string;
+  endTime: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  createdAt: string;
+  updatedAt: string;
+  notes?: string;
+}
+
+// Rezervasyon oluşturma/güncelleme için veri tipi
+export type ReservationData = Omit<Reservation, '_id' | 'createdAt' | 'updatedAt' | 'facilityName'>;
+
+// Tesisleri getir
+export const getFacilities = async (): Promise<Facility[]> => {
+  try {
+    const response = await apiClient.get('/api/facilities');
+    return response.data;
+  } catch (error: any) {
+    console.error('Get facilities error:', error.response?.data || error.message);
+    throw error.response?.data || new Error('Tesisler alınamadı');
+  }
+};
+
+// Rezervasyonları getir
+export const getReservations = async (params?: { status?: string; userId?: string }): Promise<Reservation[]> => {
+  try {
+    const response = await apiClient.get('/api/reservations', { params });
+    return response.data;
+  } catch (error: any) {
+    console.error('Get reservations error:', error.response?.data || error.message);
+    throw error.response?.data || new Error('Rezervasyonlar alınamadı');
+  }
+};
+
+// Rezervasyon oluştur
+export const createReservation = async (data: ReservationData): Promise<Reservation> => {
+  try {
+    const response = await apiClient.post('/api/reservations', data);
+    return response.data;
+  } catch (error: any) {
+    console.error('Create reservation error:', error.response?.data || error.message);
+    throw error.response?.data || new Error('Rezervasyon oluşturulamadı');
+  }
+};
+
+// Rezervasyon güncelle (durumunu değiştirme veya iptal etme için)
+export const updateReservation = async (id: string, data: Partial<ReservationData>): Promise<Reservation> => {
+  try {
+    const response = await apiClient.put(`/api/reservations/${id}`, data);
+    return response.data;
+  } catch (error: any) {
+    console.error(`Update reservation ${id} error:`, error.response?.data || error.message);
+    throw error.response?.data || new Error('Rezervasyon güncellenemedi');
+  }
+};
+
+// Rezervasyon iptal et
+export const cancelReservation = async (id: string): Promise<Reservation> => {
+  try {
+    const response = await apiClient.put(`/api/reservations/${id}/cancel`);
+    return response.data;
+  } catch (error: any) {
+    console.error(`Cancel reservation ${id} error:`, error.response?.data || error.message);
+    throw error.response?.data || new Error('Rezervasyon iptal edilemedi');
+  }
+};
+
 export default apiClient; // Diğer modüllerde kullanmak için instance'ı export et 

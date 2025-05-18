@@ -7,6 +7,48 @@ import { Payment } from '../../services/api';
 import { useUserStore } from '../../store/user';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import { useAppContext } from '../../utils/appContext';
+
+// Sample payments in case the API fails
+const SAMPLE_PAYMENTS: Payment[] = [
+  {
+    _id: '1',
+    userId: 'user123',
+    type: 'DUES',
+    description: 'Nisan 2024 Aidat',
+    amount: 250,
+    dueDate: '2024-04-30',
+    status: 'PENDING',
+    createdAt: '2024-04-01',
+    updatedAt: '2024-04-01'
+  },
+  {
+    _id: '2',
+    userId: 'user123',
+    type: 'DUES',
+    description: 'Mart 2024 Aidat',
+    amount: 250,
+    dueDate: '2024-03-31',
+    status: 'PAID',
+    paymentDate: '2024-03-25',
+    paymentMethod: 'BANK_TRANSFER',
+    createdAt: '2024-03-01',
+    updatedAt: '2024-03-25'
+  },
+  {
+    _id: '3',
+    userId: 'user123',
+    type: 'INVOICE',
+    description: 'Ortak Alan Elektrik Faturası',
+    amount: 120,
+    dueDate: '2024-04-15',
+    status: 'PAID',
+    paymentDate: '2024-04-10',
+    paymentMethod: 'CASH',
+    createdAt: '2024-04-01',
+    updatedAt: '2024-04-10'
+  }
+];
 
 export default function PaymentsScreen() {
   const theme = useTheme();
@@ -15,22 +57,67 @@ export default function PaymentsScreen() {
   const { payments, isLoading, error, fetchPayments, markAsPaid } = usePaymentsStore();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'PENDING' | 'PAID'>('ALL');
+  const [localPayments, setLocalPayments] = useState<Payment[]>([]);
+  
+  // Use the app context to check API availability
+  const { isOfflineMode, apiAvailable } = useAppContext();
+  const [useLocalData, setUseLocalData] = useState(isOfflineMode);
+
+  console.log("PaymentsScreen - Current user:", JSON.stringify(currentUser)); // Debug log
+  console.log("PaymentsScreen - Payments:", payments.length); // Debug log
+  console.log("PaymentsScreen - isLoading:", isLoading); // Debug log
+  console.log("PaymentsScreen - error:", error); // Debug log
+  console.log("PaymentsScreen - API available:", apiAvailable); // Debug log
+  console.log("PaymentsScreen - Offline mode:", isOfflineMode); // Debug log
+
+  // Update useLocalData when API availability changes
+  useEffect(() => {
+    setUseLocalData(isOfflineMode);
+  }, [isOfflineMode]);
 
   const loadPayments = useCallback(async () => {
-    if (currentUser) {
-      await fetchPayments({ userId: currentUser.id });
+    if (isOfflineMode) {
+      console.log("Loading payments in offline mode");
+      setUseLocalData(true);
+      setLocalPayments(SAMPLE_PAYMENTS);
+      return;
     }
-  }, [fetchPayments, currentUser]);
+
+    if (currentUser) {
+      console.log("Loading payments for user ID:", currentUser.id); // Debug log
+      try {
+        await fetchPayments({ userId: currentUser.id });
+        setUseLocalData(false);
+      } catch (err) {
+        console.error("Error loading payments:", err);
+        setUseLocalData(true);
+        setLocalPayments(SAMPLE_PAYMENTS);
+      }
+    } else {
+      console.warn("Cannot load payments: No current user"); // Debug log
+      setUseLocalData(true);
+      setLocalPayments(SAMPLE_PAYMENTS);
+    }
+  }, [fetchPayments, currentUser, isOfflineMode]);
 
   useEffect(() => {
     loadPayments();
   }, [loadPayments]);
 
+  // Handle case when there is an error or no user - use sample data
+  useEffect(() => {
+    if (error || !currentUser || isOfflineMode) {
+      console.log("Using sample payment data due to:", error || !currentUser ? "No user found" : "Offline mode");
+      setLocalPayments(SAMPLE_PAYMENTS);
+      setUseLocalData(true);
+    }
+  }, [error, currentUser, isOfflineMode]);
+
   useEffect(() => {
     if (error) {
-      Alert.alert('Hata', error);
+      Alert.alert('Hata', `${error}${isOfflineMode ? ' (Örnek veriler gösteriliyor)' : ''}`);
     }
-  }, [error]);
+  }, [error, isOfflineMode]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -48,9 +135,24 @@ export default function PaymentsScreen() {
           text: 'Evet, Ödendi İşaretle',
           onPress: async () => {
             try {
-              await markAsPaid(payment._id, 'USER_MARKED_AS_PAID');
-              Alert.alert('Başarılı', 'Ödeme durumu güncellendi.');
-              loadPayments();
+              if (useLocalData) {
+                // Locally mark as paid
+                const updatedPayments = localPayments.map(p => 
+                  p._id === payment._id 
+                    ? {...p, 
+                        status: 'PAID' as Payment['status'], 
+                        paymentDate: new Date().toISOString().split('T')[0], 
+                        paymentMethod: 'USER_MARKED_AS_PAID' as Payment['paymentMethod']
+                      } 
+                    : p
+                );
+                setLocalPayments(updatedPayments);
+                Alert.alert('Başarılı', 'Ödeme durumu güncellendi (yerel).');
+              } else {
+                await markAsPaid(payment._id, 'USER_MARKED_AS_PAID');
+                Alert.alert('Başarılı', 'Ödeme durumu güncellendi.');
+                loadPayments();
+              }
             } catch (err: any) {
               Alert.alert('Hata', err.message || 'Ödeme durumu güncellenirken bir hata oluştu');
             }
@@ -60,7 +162,10 @@ export default function PaymentsScreen() {
     );
   };
 
-  const filteredPayments = payments.filter(payment => {
+  // Choose which payments to display based on whether we're using API data or local data
+  const displayPayments = useLocalData ? localPayments : payments;
+
+  const filteredPayments = displayPayments.filter(payment => {
     if (selectedFilter === 'ALL') return true;
     return payment.status === selectedFilter;
   });
@@ -130,7 +235,7 @@ export default function PaymentsScreen() {
           </View>
         )}
 
-        {item.status === 'PENDING' && currentUser?.id === item.userId && (
+        {item.status === 'PENDING' && (!currentUser || currentUser.id === item.userId) && (
           <Button
             mode="contained"
             icon="check-circle-outline"
@@ -173,7 +278,13 @@ export default function PaymentsScreen() {
         })}
       </View>
 
-      {isLoading && payments.length === 0 ? (
+      {useLocalData && (
+        <View style={styles.demoModeContainer}>
+          <Text style={styles.demoModeText}>Demo Modu: Örnek veriler gösteriliyor</Text>
+        </View>
+      )}
+
+      {isLoading && !useLocalData && displayPayments.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
@@ -249,77 +360,72 @@ const createStyles = (theme: MD3Theme) => StyleSheet.create({
     justifyContent: 'center',
   },
   divider: {
-    marginVertical: 10,
-    backgroundColor: '#E0E0E0',
+    marginBottom: 10,
   },
   cardBodyRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
     marginBottom: 8,
   },
   infoItem: {
     flex: 1,
-    alignItems: 'flex-start',
-    paddingRight: 8,
   },
   label: {
     fontSize: 12,
-    color: '#667085',
-    marginBottom: 4,
+    color: theme.colors.outline,
+    marginBottom: 2,
   },
   value: {
     fontSize: 14,
-    color: '#333D4A',
-    fontWeight: '500',
+    color: theme.colors.onSurface,
   },
   amountValue: {
-    color: theme.colors.error,
     fontWeight: 'bold',
   },
   actionButton: {
-    marginTop: 16,
-    backgroundColor: theme.colors.primary,
-    borderRadius: 8,
+    marginTop: 10,
+    marginBottom: 5,
   },
   actionButtonLabel: {
     fontSize: 14,
-    fontWeight: '500',
-    color: theme.colors.onPrimary,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    padding: 16,
+    backgroundColor: theme.colors.surface,
+    elevation: 2,
+  },
+  filterButton: {
+    flex: 1,
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 4,
+  },
+  filterText: {
+    color: theme.colors.onSurfaceVariant,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: theme.colors.surfaceVariant,
   },
   emptyText: {
     fontSize: 16,
-    color: '#667085',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  filterButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  filterText: {
-    fontSize: 14,
     color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
+  },
+  demoModeContainer: {
+    backgroundColor: theme.colors.errorContainer,
+    paddingVertical: 5,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  demoModeText: {
+    color: theme.colors.error,
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
 

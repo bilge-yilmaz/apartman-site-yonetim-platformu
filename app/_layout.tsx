@@ -6,6 +6,7 @@ import { SplashScreen } from 'expo-router';
 import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lightTheme, darkTheme } from '../constants/theme';
+import { AppProvider } from '../utils/appContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -35,15 +36,17 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <PaperProvider theme={colorScheme === 'dark' ? darkTheme : lightTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="auth/login" options={{ title: 'Giriş Yap' }} />
-          <Stack.Screen name="auth/register" options={{ title: 'Kayıt Ol' }} />
-          <Stack.Screen name="profile/edit" options={{ title: 'Profili Düzenle' }} />
-          <Stack.Screen name="payments/details/[id]" options={{ title: 'Ödeme Detayı' }} />
-          <Stack.Screen name="maintenance/create" options={{ title: 'Arıza Bildir' }} />
-          <Stack.Screen name="maintenance/details/[id]" options={{ title: 'Arıza Detayı' }} />
-        </Stack>
+        <AppProvider>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="auth/login" options={{ title: 'Giriş Yap' }} />
+            <Stack.Screen name="auth/register" options={{ title: 'Kayıt Ol' }} />
+            <Stack.Screen name="profile/edit" options={{ title: 'Profili Düzenle' }} />
+            <Stack.Screen name="payments/details/[id]" options={{ title: 'Ödeme Detayı' }} />
+            <Stack.Screen name="maintenance/create" options={{ title: 'Arıza Bildir' }} />
+            <Stack.Screen name="maintenance/details/[id]" options={{ title: 'Arıza Detayı' }} />
+          </Stack>
+        </AppProvider>
       </PaperProvider>
     </QueryClientProvider>
   );

@@ -34,6 +34,7 @@ export const usePaymentsStore = create<PaymentsState>((set, get) => ({
   error: null,
   
   fetchPayments: async (params) => {
+    console.log("fetchPayments called with params:", JSON.stringify(params)); // Debug log
     if (!params.userId) {
       console.warn('fetchPayments called without userId');
       set({ isLoading: false, error: 'Kullanıcı kimliği olmadan aidatlar alınamaz.' });
@@ -44,7 +45,9 @@ export const usePaymentsStore = create<PaymentsState>((set, get) => ({
       const netInfo = await NetInfo.fetch();
       
       if (netInfo.isConnected) {
+        console.log("Making API request to get payments for userId:", params.userId);
         const remotePayments = await apiGetPayments(params);
+        console.log("Received payments from API:", remotePayments.length);
         set({ payments: remotePayments, isLoading: false });
         await cachePaymentsDb(remotePayments, params.userId); // SQLite cache güncelle
       } else {

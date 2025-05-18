@@ -36,6 +36,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="reservations"
+        options={{
+          title: 'Rezervasyon',
+          tabBarIcon: ({ color }) => <MaterialCommunityIcons name="calendar-clock" size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="announcements"
         options={{
           title: 'Duyurular',
