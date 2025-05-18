@@ -95,6 +95,7 @@ export interface Announcement {
   title: string;
   content: string;
   category?: string;
+  priority?: 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW'; // Öncelik düzeyi ekledim
   targetAudience?: 'ALL' | 'BLOCK' | 'RESIDENTS'; // Örnek roller
   block?: string; // Eğer targetAudience BLOCK ise
   createdBy?: string; // User ID

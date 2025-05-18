@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, ScrollView } from 'react-native';
 import { Text, Card, Button, ActivityIndicator, Chip, Divider, useTheme, MD3Theme } from 'react-native-paper';
 import { router } from 'expo-router';
 import { usePaymentsStore } from '../../store/paymentsStore';
@@ -8,6 +8,9 @@ import { useUserStore } from '../../store/user';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { useAppContext } from '../../utils/appContext';
+import BottomNav from '../../components/BottomNav';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import Colors from '../../constants/Colors';
 
 // Sample payments in case the API fails
 const SAMPLE_PAYMENTS: Payment[] = [
@@ -172,11 +175,11 @@ export default function PaymentsScreen() {
 
   const getStatusChipStyle = (status: Payment['status']) => {
     switch (status) {
-      case 'PAID': return { backgroundColor: theme.colors.surfaceVariant, textColor: theme.colors.primary };
-      case 'PENDING': return { backgroundColor: theme.colors.surfaceVariant, textColor: theme.colors.tertiary };
-      case 'OVERDUE': return { backgroundColor: theme.colors.errorContainer, textColor: theme.colors.error };
-      case 'CANCELLED': return { backgroundColor: theme.colors.onSurfaceDisabled, textColor: theme.colors.surfaceDisabled };
-      default: return { backgroundColor: theme.colors.backdrop, textColor: theme.colors.surfaceDisabled};
+      case 'PAID': return { backgroundColor: Colors.success, textColor: '#fff' };
+      case 'PENDING': return { backgroundColor: Colors.warning, textColor: '#fff' };
+      case 'OVERDUE': return { backgroundColor: Colors.error, textColor: '#fff' };
+      case 'CANCELLED': return { backgroundColor: Colors.lightGray, textColor: '#fff' };
+      default: return { backgroundColor: Colors.lightGray, textColor: '#fff'};
     }
   };
 
@@ -190,131 +193,168 @@ export default function PaymentsScreen() {
     }
   };
 
-  const renderPaymentItem = ({ item }: { item: Payment }) => (
-    <Card style={styles.card} onPress={() => router.push(`/payments/details/${item._id}` as any)}>
-      <Card.Content>
-        <View style={styles.cardHeader}>
-          <Text style={styles.descriptionText}>{item.description}</Text>
-          <Chip
-            style={[styles.statusChip, { backgroundColor: getStatusChipStyle(item.status).backgroundColor }]}
-            textStyle={{ color: getStatusChipStyle(item.status).textColor, fontWeight: 'bold', fontSize: 12 }}
-          >
-            {getStatusText(item.status)}
-          </Chip>
-        </View>
-
-        <Divider style={styles.divider} />
-
-        <View style={styles.cardBodyRow}>
-          <View style={styles.infoItem}>
-            <Text style={styles.label}>Tutar:</Text>
-            <Text style={[styles.value, styles.amountValue]}>{item.amount.toFixed(2)} TL</Text>
+  const renderPaymentItem = ({ item }: { item: Payment }) => {
+    const statusStyle = getStatusChipStyle(item.status);
+    
+    return (
+      <Card 
+        style={[styles.card, { borderLeftWidth: 5, borderLeftColor: statusStyle.backgroundColor }]} 
+        onPress={() => router.push(`/payments/details/${item._id}` as any)}
+      >
+        <Card.Content>
+          <View style={styles.cardHeader}>
+            <Text style={styles.descriptionText}>{item.description}</Text>
+            <Chip
+              style={[styles.statusChip, { backgroundColor: statusStyle.backgroundColor }]}
+              textStyle={{ color: statusStyle.textColor, fontWeight: 'bold', fontSize: 12 }}
+            >
+              {getStatusText(item.status)}
+            </Chip>
           </View>
-          <View style={styles.infoItem}>
-            <Text style={styles.label}>Son Ödeme Tarihi:</Text>
-            <Text style={styles.value}>
-              {format(new Date(item.dueDate), 'dd MMM yyyy', { locale: tr })}
-            </Text>
-          </View>
-        </View>
 
-        {item.status === 'PAID' && item.paymentDate && (
-          <View style={styles.cardBodyRow}>
-            <View style={styles.infoItem}>
-              <Text style={styles.label}>Ödeme Tarihi:</Text>
-              <Text style={styles.value}>
-                {format(new Date(item.paymentDate), 'dd MMM yyyy', { locale: tr })}
+          <Divider style={styles.divider} />
+
+          <View style={styles.detailRow}>
+            <View style={styles.detail}>
+              <MaterialIcons name="payment" size={18} color={Colors.primary} />
+              <Text style={styles.detailText}>{item.amount.toFixed(2)} TL</Text>
+            </View>
+            <View style={styles.detail}>
+              <MaterialIcons name="date-range" size={18} color={Colors.primary} />
+              <Text style={styles.detailText}>
+                {format(new Date(item.dueDate), 'dd MMM yyyy', { locale: tr })}
               </Text>
             </View>
-             {item.paymentMethod && (
-              <View style={styles.infoItem}>
-                <Text style={styles.label}>Ödeme Yöntemi:</Text>
-                <Text style={styles.value}>{item.paymentMethod.replace('_', ' ')}</Text>
-              </View>
-            )}
           </View>
-        )}
 
-        {item.status === 'PENDING' && (!currentUser || currentUser.id === item.userId) && (
-          <Button
-            mode="contained"
-            icon="check-circle-outline"
-            onPress={() => handlePayment(item)}
-            style={styles.actionButton}
-            labelStyle={styles.actionButtonLabel}
-            theme={{ roundness: 2 }}
-          >
-            Ödendi İşaretle
-          </Button>
-        )}
-      </Card.Content>
-    </Card>
-  );
+          {item.status === 'PAID' && item.paymentDate && (
+            <View style={styles.detailRow}>
+              <View style={styles.detail}>
+                <MaterialIcons name="event-available" size={18} color={Colors.success} />
+                <Text style={styles.detailText}>
+                  {format(new Date(item.paymentDate), 'dd MMM yyyy', { locale: tr })}
+                </Text>
+              </View>
+               {item.paymentMethod && (
+                <View style={styles.detail}>
+                  <MaterialIcons name="credit-card" size={18} color={Colors.primary} />
+                  <Text style={styles.detailText}>{item.paymentMethod.replace('_', ' ')}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {item.status === 'PENDING' && (!currentUser || currentUser.id === item.userId) && (
+            <Button
+              mode="contained"
+              icon="check-circle-outline"
+              onPress={() => handlePayment(item)}
+              style={styles.actionButton}
+              buttonColor={Colors.success}
+            >
+              Ödendi İşaretle
+            </Button>
+          )}
+        </Card.Content>
+      </Card>
+    );
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.filterContainer}>
-        {(['ALL', 'PENDING', 'PAID'] as const).map((filter) => {
-          const isActive = selectedFilter === filter;
-          return (
-            <TouchableOpacity
-              key={filter}
-              style={[
-                styles.filterButton,
-                isActive && { backgroundColor: theme.colors.primaryContainer },
-              ]}
-              onPress={() => setSelectedFilter(filter)}
-            >
-              <Text
-                style={[
-                  styles.filterText,
-                  isActive && { color: theme.colors.onPrimaryContainer, fontWeight: 'bold' },
-                ]}
-              >
-                {filter === 'ALL' ? 'Tümü' : filter === 'PENDING' ? 'Bekleyen' : 'Ödenen'}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      <View style={styles.safeArea} />
+      
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Aidatlar</Text>
       </View>
+      
+      <ScrollView 
+        style={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title}>Aidat Ödemeleri</Text>
+            <Text style={styles.subtitle}>Aidat ve ödeme bilgilerinizi görüntüleyebilirsiniz</Text>
+          </View>
+        </View>
+      
+        <View style={styles.tabContainer}>
+          <TouchableOpacity 
+            style={[styles.tab, selectedFilter === 'ALL' && styles.activeTab]} 
+            onPress={() => setSelectedFilter('ALL')}
+          >
+            <Text style={[styles.tabText, selectedFilter === 'ALL' && styles.activeTabText]}>
+              <Ionicons 
+                name="list-outline" 
+                size={16} 
+                color={selectedFilter === 'ALL' ? '#fff' : '#7f8c8d'} 
+              /> Tümü ({displayPayments.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tab, selectedFilter === 'PENDING' && styles.activeTab]} 
+            onPress={() => setSelectedFilter('PENDING')}
+          >
+            <Text style={[styles.tabText, selectedFilter === 'PENDING' && styles.activeTabText]}>
+              <Ionicons 
+                name="time-outline" 
+                size={16} 
+                color={selectedFilter === 'PENDING' ? '#fff' : '#7f8c8d'} 
+              /> Bekleyenler
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tab, selectedFilter === 'PAID' && styles.activeTab]} 
+            onPress={() => setSelectedFilter('PAID')}
+          >
+            <Text style={[styles.tabText, selectedFilter === 'PAID' && styles.activeTabText]}>
+              <Ionicons 
+                name="checkmark-circle-outline" 
+                size={16} 
+                color={selectedFilter === 'PAID' ? '#fff' : '#7f8c8d'} 
+              /> Ödenenler
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-      {useLocalData && (
-        <View style={styles.demoModeContainer}>
-          <Text style={styles.demoModeText}>Demo Modu: Örnek veriler gösteriliyor</Text>
-        </View>
-      )}
-
-      {isLoading && !useLocalData && displayPayments.length === 0 ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-        </View>
-      ) : filteredPayments.length > 0 ? (
-        <FlatList
-          data={filteredPayments}
-          renderItem={renderPaymentItem}
-          keyExtractor={(item) => item._id}
-          contentContainerStyle={styles.listContainer}
-          refreshControl={
-            <RefreshControl 
-              refreshing={isLoading || refreshing}
-              onRefresh={onRefresh} 
-              colors={[theme.colors.primary]} 
-              tintColor={theme.colors.primary}
-            />
-          }
-        />
-      ) : (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            {selectedFilter === 'PENDING'
-              ? 'Bekleyen ödeme/aidat bulunmamaktadır.'
-              : selectedFilter === 'PAID'
-              ? 'Ödenmiş kayıt bulunmamaktadır.'
-              : 'Ödeme/aidat kaydı bulunmamaktadır.'}
-          </Text>
-          <Button onPress={loadPayments} style={{marginTop: 10}} mode="outlined">Tekrar Dene</Button>
-        </View>
-      )}
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Ödemeler yükleniyor...</Text>
+          </View>
+        ) : filteredPayments.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconContainer}>
+              <Ionicons name="cash-outline" size={36} color="#999" />
+            </View>
+            <Text style={styles.emptyTitle}>Hiç ödeme bulunamadı</Text>
+            <Text style={styles.emptySubText}>
+              {selectedFilter !== 'ALL' 
+                ? 'Farklı bir filtre seçmeyi deneyin' 
+                : 'Yakında ödeme bilgileri burada görünecek'}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.paymentsContainer}>
+            <Text style={styles.sectionTitle}>
+              {selectedFilter === 'ALL' 
+                ? 'Tüm Ödemeler' 
+                : selectedFilter === 'PENDING' 
+                ? 'Bekleyen Ödemeler' 
+                : 'Ödenen Ödemeler'}
+            </Text>
+            
+            {filteredPayments.map((item) => (
+              <View key={item._id}>
+                {renderPaymentItem({ item })}
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+      
+      <BottomNav />
     </View>
   );
 }
@@ -322,24 +362,146 @@ export default function PaymentsScreen() {
 const createStyles = (theme: MD3Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surfaceVariant,
+    backgroundColor: Colors.background,
   },
-  loadingContainer: {
+  safeArea: {
+    height: 35,
+    backgroundColor: Colors.white,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.white,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: Colors.black,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#2c3e50',
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#7f8c8d',
+    marginTop: 6,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginVertical: 16,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#eee',
+    elevation: 2,
+  },
+  tab: {
     flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  activeTab: {
+    backgroundColor: Colors.primary,
+  },
+  tabText: {
+    color: '#7f8c8d',
+    fontWeight: '500',
+    fontSize: 14,
+  },
+  activeTabText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  paymentsContainer: {
+    margin: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 16,
+    color: '#2c3e50',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    padding: 32,
+    margin: 16,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  emptyIconContainer: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.colors.surfaceVariant,
+    marginBottom: 16,
   },
-  listContainer: {
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#333',
+  },
+  emptySubText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  loadingContainer: {
+    padding: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+    fontSize: 16,
+  },
+  filterContainer: {
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
+  filterScrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
+  },
+  filterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 10,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+  },
+  filterButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  filterText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  filterTextActive: {
+    color: '#fff',
+    fontWeight: '500',
   },
   card: {
     marginBottom: 16,
     elevation: 2,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.white,
+    overflow: 'hidden',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -351,7 +513,7 @@ const createStyles = (theme: MD3Theme) => StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     flexShrink: 1,
-    color: theme.colors.onSurface,
+    color: Colors.black,
     marginRight: 8,
   },
   statusChip: {
@@ -360,72 +522,28 @@ const createStyles = (theme: MD3Theme) => StyleSheet.create({
     justifyContent: 'center',
   },
   divider: {
-    marginBottom: 10,
+    marginVertical: 10,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    height: 1,
   },
-  cardBodyRow: {
+  detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginVertical: 8,
   },
-  infoItem: {
-    flex: 1,
+  detail: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  label: {
-    fontSize: 12,
-    color: theme.colors.outline,
-    marginBottom: 2,
-  },
-  value: {
+  detailText: {
+    marginLeft: 8,
+    color: '#555',
     fontSize: 14,
-    color: theme.colors.onSurface,
-  },
-  amountValue: {
-    fontWeight: 'bold',
   },
   actionButton: {
-    marginTop: 10,
-    marginBottom: 5,
-  },
-  actionButtonLabel: {
-    fontSize: 14,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    backgroundColor: theme.colors.surface,
-    elevation: 2,
-  },
-  filterButton: {
-    flex: 1,
-    padding: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 4,
-  },
-  filterText: {
-    color: theme.colors.onSurfaceVariant,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: theme.colors.onSurfaceVariant,
-    textAlign: 'center',
-  },
-  demoModeContainer: {
-    backgroundColor: theme.colors.errorContainer,
-    paddingVertical: 5,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  demoModeText: {
-    color: theme.colors.error,
-    fontSize: 12,
-    fontWeight: 'bold',
+    marginTop: 12,
+    borderRadius: 8,
+    paddingVertical: 6,
   },
 });
 

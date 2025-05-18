@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, Image } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, FlatList, RefreshControl, Alert, Image, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, Card, Button, ActivityIndicator, Chip, Divider, FAB } from 'react-native-paper';
 import { router, useFocusEffect } from 'expo-router';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import BottomNav from '../../components/BottomNav';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import Colors from '../../constants/Colors';
 
 // Genişletilmiş MaintenanceRequest tipi
 type MaintenanceRequest = {
@@ -75,6 +79,7 @@ export default function MaintenanceScreen() {
   const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState('active');
 
   // Arıza bildirimlerini getir
   const fetchRequests = async () => {
@@ -305,160 +310,241 @@ export default function MaintenanceScreen() {
     }
   };
 
-  const renderRequestItem = ({ item }: { item: MaintenanceRequest }) => (
-    <Card style={styles.card} mode="elevated">
-      <Card.Content>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>{item.title}</Text>
-          <Chip 
-            mode="flat"
-            style={[
-              styles.statusChip,
-              {
-                backgroundColor: 
-                  item.status === 'COMPLETED' ? '#4CAF50' :
-                  item.status === 'IN_PROGRESS' ? '#FF9800' :
-                  item.status === 'CANCELLED' ? '#F44336' : '#2196F3'
-              }
-            ]}
-          >
-            <Text style={styles.statusText}>
-              {item.status === 'COMPLETED' ? 'Tamamlandı' :
-               item.status === 'IN_PROGRESS' ? 'İşlemde' :
-               item.status === 'CANCELLED' ? 'İptal Edildi' : 'Bekliyor'}
-            </Text>
-          </Chip>
-        </View>
-        
-        <Text style={styles.description}>{item.description}</Text>
-        
-        <Divider style={styles.divider} />
-        
-        <View style={styles.infoRow}>
-          <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Daire:</Text>
-            <Text style={styles.infoValue}>{item.block}-{item.apartmentNo}</Text>
-          </View>
-          
-          <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Tarih:</Text>
-            <Text style={styles.infoValue}>
-              {format(new Date(item.createdAt), 'dd MMM yyyy', { locale: tr })}
-            </Text>
-          </View>
-        </View>
-        
-        <View style={styles.tagsRow}>
-          {/* Öncelik etiketi */}
-          <Chip 
-            mode="flat"
-            style={[
-              styles.priorityChip,
-              {
-                backgroundColor: 
-                  item.priority === 'URGENT' ? '#F44336' :
-                  item.priority === 'HIGH' ? '#FF9800' :
-                  item.priority === 'MEDIUM' ? '#2196F3' : '#4CAF50'
-              }
-            ]}
-          >
-            <Text style={styles.chipText}>
-              Öncelik: {item.priority === 'URGENT' ? 'Acil' :
-                        item.priority === 'HIGH' ? 'Yüksek' :
-                        item.priority === 'MEDIUM' ? 'Orta' : 'Düşük'}
-            </Text>
-          </Chip>
-          
-          {/* Kategori etiketi */}
-          {item.category && (
-            <Chip 
-              mode="outlined" 
-              style={styles.categoryChip}
-            >
-              <Text style={styles.categoryText}>{getCategoryText(item.category)}</Text>
-            </Chip>
-          )}
-        </View>
-        
-        {item.status === 'PENDING' && (
-          <Button 
-            mode="outlined" 
-            onPress={() => handleCancel(item)}
-            style={styles.cancelButton}
-            icon="close"
-          >
-            İptal Et
-          </Button>
-        )}
-      </Card.Content>
-    </Card>
+  // Filter maintenance requests based on active tab
+  const activeRequests = requests.filter(
+    req => req.status === 'PENDING' || req.status === 'IN_PROGRESS'
   );
+  
+  const completedRequests = requests.filter(
+    req => req.status === 'COMPLETED' || req.status === 'CANCELLED'
+  );
+
+  const displayRequests = activeTab === 'active' ? activeRequests : completedRequests;
 
   return (
     <View style={styles.container}>
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator animating={true} size="large" color="#0066cc" />
-          <Text style={styles.loadingText}>Arıza bildirimleri yükleniyor...</Text>
-        </View>
-      ) : requests.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Image 
-            source={{ uri: 'https://img.icons8.com/fluency/240/000000/maintenance.png' }} 
-            style={styles.emptyImage} 
-          />
-          <Text style={styles.emptyTitle}>Arıza Bildiriminiz Yok</Text>
-          <Text style={styles.emptyText}>Henüz arıza bildiriminiz bulunmuyor. Yeni bir arıza bildirimi oluşturmak için aşağıdaki butonu kullanabilirsiniz.</Text>
+      <View style={styles.safeArea} />
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Arızalar</Text>
+      </View>
+      
+      <ScrollView 
+        style={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title}>Arıza Bildirimleri</Text>
+            <Text style={styles.subtitle}>Site içerisindeki arızaları bildirebilirsiniz</Text>
+          </View>
           <Button 
             mode="contained" 
             onPress={() => router.push('/maintenance/create')}
-            style={styles.createButton}
+            style={styles.newButton}
+            labelStyle={{ fontWeight: '600' }}
             icon="plus"
           >
-            Arıza Bildirimi Oluştur
+            Yeni
           </Button>
         </View>
-      ) : (
-        <>
-          <FlatList
-            data={requests}
-            keyExtractor={(item) => item._id}
-            renderItem={({ item }) => renderRequestItem({ item })}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                colors={['#0066cc']}
-              />
-            }
-            contentContainerStyle={styles.listContent}
-            ListHeaderComponent={
-              <View style={styles.headerContainer}>
-                <View style={styles.headerTitleRow}>
-                  <Text style={styles.headerTitle}>Arıza Bildirimlerim</Text>
-                  <Button 
-                    mode="text" 
-                    onPress={handleDeleteCancelled}
-                    style={styles.deleteButton}
-                    icon="delete-sweep"
-                    labelStyle={styles.deleteButtonLabel}
-                  >
-                    İptal Edilenleri Sil
-                  </Button>
-                </View>
-                <Text style={styles.headerSubtitle}>{requests.length} adet arıza bildirimi</Text>
-              </View>
-            }
-          />
-          
-          <FAB
-            style={styles.fab}
-            icon="plus"
-            onPress={() => router.push('/maintenance/create')}
-            color="white"
-          />
-        </>
-      )}
+
+        {/* Tabs */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === 'active' && styles.activeTab]} 
+            onPress={() => setActiveTab('active')}
+          >
+            <Text style={[styles.tabText, activeTab === 'active' && styles.activeTabText]}>
+              <Ionicons 
+                name="construct-outline" 
+                size={16} 
+                color={activeTab === 'active' ? '#fff' : '#7f8c8d'} 
+              /> Aktif ({activeRequests.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === 'completed' && styles.activeTab]} 
+            onPress={() => setActiveTab('completed')}
+          >
+            <Text style={[styles.tabText, activeTab === 'completed' && styles.activeTabText]}>
+              <Ionicons 
+                name="checkmark-circle-outline" 
+                size={16} 
+                color={activeTab === 'completed' ? '#fff' : '#7f8c8d'} 
+              /> Tamamlananlar ({completedRequests.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
+      
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator animating={true} size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Arıza bildirimleri yükleniyor...</Text>
+          </View>
+        ) : displayRequests.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconContainer}>
+              <Ionicons name="construct-outline" size={36} color="#999" />
+            </View>
+            <Text style={styles.emptyTitle}>Arıza Bildiriminiz Yok</Text>
+            <Text style={styles.emptySubText}>
+              {activeTab === 'active' 
+                ? 'Aktif arıza bildiriminiz bulunmuyor.' 
+                : 'Tamamlanan arıza bildiriminiz bulunmuyor.'}
+            </Text>
+            <Button 
+              mode="contained" 
+              onPress={() => router.push('/maintenance/create')}
+              style={styles.createButton}
+              icon="plus"
+            >
+              Arıza Bildirimi Oluştur
+            </Button>
+          </View>
+        ) : (
+          <View style={styles.maintenanceContainer}>
+            <Text style={styles.sectionTitle}>
+              {activeTab === 'active' ? 'Aktif Arıza Bildirimlerim' : 'Tamamlanan Arıza Bildirimlerim'}
+            </Text>
+            {displayRequests.map(item => {
+              // Get color based on status
+              let borderColor;
+              switch(item.status) {
+                case 'PENDING':
+                  borderColor = Colors.warning;
+                  break;
+                case 'IN_PROGRESS':
+                  borderColor = Colors.info;
+                  break;
+                case 'COMPLETED':
+                  borderColor = Colors.success;
+                  break;
+                case 'CANCELLED':
+                  borderColor = Colors.error;
+                  break;
+                default:
+                  borderColor = Colors.lightGray;
+              }
+              
+              return (
+                <Card 
+                  key={item._id} 
+                  style={[styles.maintenanceCard, { borderLeftColor: borderColor }]}
+                  mode="elevated"
+                >
+                  <Card.Content>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.cardTitle}>{item.title}</Text>
+                      <Chip 
+                        mode="flat"
+                        style={[
+                          styles.statusChip,
+                          {
+                            backgroundColor: 
+                              item.status === 'COMPLETED' ? Colors.success :
+                              item.status === 'IN_PROGRESS' ? Colors.info :
+                              item.status === 'CANCELLED' ? Colors.error : Colors.warning
+                          }
+                        ]}
+                      >
+                        <Text style={styles.statusText}>
+                          {item.status === 'COMPLETED' ? 'Tamamlandı' :
+                           item.status === 'IN_PROGRESS' ? 'İşlemde' :
+                           item.status === 'CANCELLED' ? 'İptal Edildi' : 'Bekliyor'}
+                        </Text>
+                      </Chip>
+                    </View>
+                    
+                    <Divider style={styles.divider} />
+                    
+                    <Text style={styles.description}>{item.description}</Text>
+                    
+                    <View style={styles.detailRow}>
+                      <View style={styles.detail}>
+                        <MaterialIcons name="location-on" size={18} color={Colors.primary} />
+                        <Text style={styles.detailText}>
+                          {item.block || '-'}-{item.apartmentNo || '-'}
+                        </Text>
+                      </View>
+                      
+                      <View style={styles.detail}>
+                        <MaterialIcons name="date-range" size={18} color={Colors.primary} />
+                        <Text style={styles.detailText}>
+                          {format(new Date(item.createdAt), 'dd MMM yyyy', { locale: tr })}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.tagsRow}>
+                      {/* Öncelik etiketi */}
+                      <Chip 
+                        mode="flat"
+                        style={[
+                          styles.priorityChip,
+                          {
+                            backgroundColor: 
+                              item.priority === 'URGENT' ? '#F44336' :
+                              item.priority === 'HIGH' ? '#FF9800' :
+                              item.priority === 'MEDIUM' ? '#2196F3' : '#4CAF50'
+                          }
+                        ]}
+                      >
+                        <Text style={styles.chipText}>
+                          Öncelik: {item.priority === 'URGENT' ? 'Acil' :
+                                    item.priority === 'HIGH' ? 'Yüksek' :
+                                    item.priority === 'MEDIUM' ? 'Orta' : 'Düşük'}
+                        </Text>
+                      </Chip>
+                      
+                      {/* Kategori etiketi */}
+                      {item.category && (
+                        <Chip 
+                          mode="outlined" 
+                          style={styles.categoryChip}
+                        >
+                          <Text style={styles.categoryText}>{getCategoryText(item.category)}</Text>
+                        </Chip>
+                      )}
+                    </View>
+                    
+                    {item.status === 'PENDING' && (
+                      <Button 
+                        mode="outlined" 
+                        onPress={() => handleCancel(item)}
+                        style={styles.cancelButton}
+                        icon="close"
+                      >
+                        İptal Et
+                      </Button>
+                    )}
+                  </Card.Content>
+                </Card>
+              );
+            })}
+            
+            {activeTab === 'completed' && completedRequests.filter(req => req.status === 'CANCELLED').length > 0 && (
+              <Button 
+                mode="text" 
+                onPress={handleDeleteCancelled}
+                style={styles.deleteButton}
+                icon="delete-sweep"
+                textColor={Colors.error}
+              >
+                İptal Edilenleri Sil
+              </Button>
+            )}
+          </View>
+        )}
+      </ScrollView>
+      
+      <FAB
+        style={styles.fab}
+        icon="plus"
+        onPress={() => router.push('/maintenance/create')}
+        color="white"
+      />
+      
+      <BottomNav />
     </View>
   );
 }
@@ -466,10 +552,44 @@ export default function MaintenanceScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: Colors.background,
+  },
+  safeArea: {
+    height: 35,
+    backgroundColor: Colors.white,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.white,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: Colors.black,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#2c3e50',
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#7f8c8d',
+    marginTop: 6,
+  },
+  newButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    elevation: 3,
   },
   loadingContainer: {
-    flex: 1,
+    padding: 60,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -479,10 +599,25 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
+    margin: 16,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  emptyIconContainer: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   emptyImage: {
     width: 120,
@@ -490,24 +625,81 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   emptyTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 12,
   },
-  emptyText: {
+  emptySubText: {
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     lineHeight: 22,
   },
   createButton: {
     marginTop: 16,
     paddingVertical: 8,
-    borderRadius: 24,
+    borderRadius: 8,
     elevation: 4,
-    backgroundColor: '#0066cc',
+    backgroundColor: Colors.primary,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginVertical: 16,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#eee',
+    elevation: 2,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  activeTab: {
+    backgroundColor: Colors.primary,
+  },
+  tabText: {
+    color: '#7f8c8d',
+    fontWeight: '500',
+    fontSize: 15,
+  },
+  activeTabText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  maintenanceContainer: {
+    margin: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 16,
+    color: '#2c3e50',
+  },
+  maintenanceCard: {
+    marginBottom: 16,
+    elevation: 2,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    borderLeftWidth: 5,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  detail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  detailText: {
+    marginLeft: 8,
+    color: '#555',
+    fontSize: 14,
   },
   headerContainer: {
     paddingBottom: 16,
@@ -517,7 +709,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  headerTitle: {
+  sectionHeaderTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
@@ -528,7 +720,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   deleteButton: {
-    marginVertical: 0,
+    marginVertical: 8,
+    alignSelf: 'center',
   },
   deleteButtonLabel: {
     fontSize: 12,
@@ -616,11 +809,11 @@ const styles = StyleSheet.create({
   categoryChip: {
     height: 32,
     borderRadius: 16,
-    borderColor: '#0066cc',
+    borderColor: Colors.primary,
     paddingHorizontal: 8,
   },
   categoryText: {
-    color: '#0066cc',
+    color: Colors.primary,
     fontSize: 13,
     fontWeight: '500',
   },
@@ -630,15 +823,15 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     marginTop: 12,
-    borderColor: '#F44336',
-    borderRadius: 24,
+    borderColor: Colors.error,
+    borderRadius: 8,
   },
   fab: {
     position: 'absolute',
     margin: 16,
     right: 0,
-    bottom: 0,
-    backgroundColor: '#0066cc',
+    bottom: 65,
+    backgroundColor: Colors.primary,
     borderRadius: 28,
     elevation: 6,
   },

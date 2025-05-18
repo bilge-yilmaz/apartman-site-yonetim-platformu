@@ -21,6 +21,7 @@ export interface User {
   block?: string;
   apartmentNo?: string;
   isActive?: boolean;
+  image?: string; // Kullanıcı profil resmi
 }
 
 // App settings interface
