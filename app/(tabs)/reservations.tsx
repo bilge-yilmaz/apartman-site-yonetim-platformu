@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import { useFocusEffect } from '@react-navigation/native';
 import { FontAwesome5, MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { Card, Button, Badge, Divider } from 'react-native-paper';
-import BottomNav from '../../components/BottomNav';
+import { FAB } from 'react-native-paper';
+import { router } from 'expo-router';
 import Colors from '../../constants/Colors';
 
 // @ts-ignore - Eksik tiplerden kaçınmak için
@@ -653,7 +654,12 @@ export default function ReservationsScreen() {
         </View>
       </ScrollView>
 
-      <BottomNav />
+      <FAB
+        style={styles.fab}
+        icon="plus"
+        onPress={() => router.push('/reservations/create' as any)}
+        color="white"
+      />
     </View>
   );
 }
@@ -951,6 +957,12 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     color: '#bbb',
+  },
+  fab: {
+    position: 'absolute',
+    margin: 16,
+    right: 0,
+    bottom: 0,
   },
 });
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
@@ -7,10 +7,21 @@ import Colors from '../constants/Colors';
 export default function BottomNav() {
   const pathname = usePathname();
   
+  // Debug amaçlı pathname değerini konsola yazdırma
+  useEffect(() => {
+    console.log('Current pathname:', pathname);
+  }, [pathname]);
+  
+  // Ana sayfa kontrolü için özel bir fonksiyon
+  const isHomeScreen = () => {
+    const homePaths = ['/', '/(tabs)', '/(tabs)/', '/(tabs)/index', '/(tabs)/index/'];
+    return homePaths.includes(pathname);
+  };
+  
+  // Diğer sayfalar için genel kontrol
   const isActive = (route: string) => {
     if (route === '/') {
-      // Only highlight home when specifically on the home page
-      return pathname === '/(tabs)' || pathname === '/(tabs)/index';
+      return isHomeScreen();
     }
     return pathname.includes(route);
   };
@@ -19,7 +30,7 @@ export default function BottomNav() {
     <View style={styles.bottomNav}>
       <TouchableOpacity 
         style={styles.navItem}
-        onPress={() => router.push('/(tabs)' as any)}
+        onPress={() => router.push('/(tabs)/' as any)}
       >
         {isActive('/') ? (
           <View style={styles.navIconActive}>

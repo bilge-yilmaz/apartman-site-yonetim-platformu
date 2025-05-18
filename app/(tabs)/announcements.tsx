@@ -4,7 +4,6 @@ import { useEffect, useCallback, useState } from 'react';
 import { useAnnouncementsStore } from '../../store/announcementsStore';
 import { Announcement } from '../../services/api';
 import { router } from 'expo-router';
-import BottomNav from '../../components/BottomNav';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 
@@ -219,7 +218,7 @@ export default function AnnouncementsScreen() {
         )}
       </ScrollView>
 
-      <BottomNav />
+      {/* Tab bar artık Expo Router tarafından otomatik olarak ekleniyor */}
     </View>
   );
 }

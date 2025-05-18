@@ -1,11 +1,11 @@
-import { useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Alert } from 'react-native';
-import { Text, Button, Card, Divider, Avatar } from 'react-native-paper';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Image, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { Text, Card, Button, Avatar, useTheme, Switch, Divider } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useUserStore } from '../../store/user';
-import BottomNav from '../../components/BottomNav';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
+import { useAppContext } from '../../utils/appContext';
 
 export default function ProfileScreen() {
   const { user, hydrate, logout, isLoading } = useUserStore();
@@ -71,8 +71,6 @@ export default function ProfileScreen() {
             Giriş Yap
           </Button>
         </View>
-        
-        <BottomNav />
       </View>
     );
   }
@@ -179,8 +177,6 @@ export default function ProfileScreen() {
           </Card.Content>
         </Card>
       </ScrollView>
-      
-      <BottomNav />
     </View>
   );
 }

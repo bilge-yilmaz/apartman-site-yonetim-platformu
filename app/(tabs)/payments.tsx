@@ -8,7 +8,6 @@ import { useUserStore } from '../../store/user';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { useAppContext } from '../../utils/appContext';
-import BottomNav from '../../components/BottomNav';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 
@@ -354,7 +353,7 @@ export default function PaymentsScreen() {
         )}
       </ScrollView>
       
-      <BottomNav />
+      {/* Tab bar artık Expo Router tarafından otomatik olarak eklendiği için BottomNav kaldırıldı */}
     </View>
   );
 }

@@ -6,7 +6,6 @@ import { router, useFocusEffect } from 'expo-router';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import BottomNav from '../../components/BottomNav';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 
@@ -543,8 +542,6 @@ export default function MaintenanceScreen() {
         onPress={() => router.push('/maintenance/create')}
         color="white"
       />
-      
-      <BottomNav />
     </View>
   );
 }

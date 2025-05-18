@@ -1,87 +1,135 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, ImageBackground, TextInput } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, Title, Paragraph, Button, Avatar, Divider, ActivityIndicator, Surface, IconButton } from 'react-native-paper';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useUserStore } from '../../store/user';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
-import BottomNav from '../../components/BottomNav';
-
-// AsyncStorage anahtarı
-const ANNOUNCEMENTS_STORAGE_KEY = 'announcements';
-const MAINTENANCE_STORAGE_KEY = 'maintenance_requests';
+import { useAnnouncementsStore } from '../../store/announcementsStore';
+import { useMaintenanceStore } from '../../store/maintenance';
+import { Announcement } from '../../services/api';
+import { MaintenanceRequest } from '../../store/maintenance';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useUserStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [announcements, setAnnouncements] = useState([]);
-  const [maintenanceRequests, setMaintenanceRequests] = useState([]);
-  const [weather, setWeather] = useState({ temp: '22°C', condition: 'Güneşli', icon: 'sunny' });
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Announcement store'u bağla
+  const { 
+    announcements, 
+    fetchAnnouncements, 
+    isLoading: announcementsLoading,
+    error: announcementsError 
+  } = useAnnouncementsStore();
+  
+  // Maintenance store'u bağla
+  const { 
+    requests: maintenanceRequests, 
+    fetchRequests: fetchMaintenanceRequests,
+    isLoading: maintenanceLoading,
+    error: maintenanceError
+  } = useMaintenanceStore();
+  
+  // API veya bağlantı hatası göstergesi
+  useEffect(() => {
+    if (announcementsError) {
+      console.warn('Duyuru API hatası:', announcementsError);
+    }
+    
+    if (maintenanceError) {
+      console.warn('Arıza bildirimleri API hatası:', maintenanceError);
+    }
+  }, [announcementsError, maintenanceError]);
+  
   // Verileri yükle
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Duyuruları yükle
-      const announcementsData = await AsyncStorage.getItem(ANNOUNCEMENTS_STORAGE_KEY);
-      if (announcementsData) {
-        const parsedAnnouncements = JSON.parse(announcementsData);
-        setAnnouncements(parsedAnnouncements.slice(0, 3)); // Son 3 duyuru
-      }
+      // Promise.all kullanarak paralelleştirme
+      await Promise.all([
+        fetchAnnouncements({ isActive: true }),
+        fetchMaintenanceRequests()
+      ]);
       
-      // Arıza bildirimlerini yükle
-      const maintenanceData = await AsyncStorage.getItem(MAINTENANCE_STORAGE_KEY);
-      if (maintenanceData) {
-        const parsedMaintenance = JSON.parse(maintenanceData);
-        setMaintenanceRequests(parsedMaintenance.slice(0, 3)); // Son 3 arıza
-      }
     } catch (error) {
       console.error('Veriler yüklenirken hata:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchAnnouncements, fetchMaintenanceRequests]);
   
   // Sayfa yüklenirken verileri getir
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+  
+  // Sayfa focus olduğunda verileri güncelle
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+      return () => {
+        // Cleanup function
+      };
+    }, [loadData])
+  );
   
   // Yenileme işlemi
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
-  };
+  }, [loadData]);
+  
+  // Varsayılan seçenekler
+  const featuredServices = [
+    { id: 1, icon: 'megaphone-outline' as const, label: 'Duyurular', route: '/(tabs)/announcements' as const },
+    { id: 2, icon: 'construct-outline' as const, label: 'Arızalar', route: '/(tabs)/maintenance' as const },
+    { id: 3, icon: 'cash-outline' as const, label: 'Ödemeler', route: '/(tabs)/payments' as const },
+    { id: 4, icon: 'calendar-outline' as const, label: 'Rezervasyon', route: '/(tabs)/reservations' as const },
+  ];
+  
+  // Son 3 duyuru için duyuruları tarihe göre sırala
+  const recentAnnouncements = [...(announcements || [])]
+    .sort((a: Announcement, b: Announcement) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    .slice(0, 3);
+  
+  // Son 3 arıza bildirimi için bildirimleri tarihe göre sırala
+  const recentMaintenanceRequests = [...(maintenanceRequests || [])]
+    .sort((a: MaintenanceRequest, b: MaintenanceRequest) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    .slice(0, 3);
   
   // Yükleniyor göstergesi
-  if (loading) {
+  if (loading && (announcementsLoading || maintenanceLoading)) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Yükleniyor...</Text>
+      <View style={styles.container}>
+        <View style={styles.safeArea} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Yükleniyor...</Text>
+        </View>
       </View>
     );
   }
-
-  const featuredServices = [
-    { id: 1, icon: 'megaphone-outline' as const, label: 'Duyurular', route: '/(tabs)/announcements' as const, color: '#53B175' },
-    { id: 2, icon: 'construct-outline' as const, label: 'Arızalar', route: '/(tabs)/maintenance' as const, color: '#F8A44C' },
-    { id: 3, icon: 'cash-outline' as const, label: 'Ödemeler', route: '/(tabs)/payments' as const, color: '#3183F5' },
-    { id: 4, icon: 'calendar-outline' as const, label: 'Rezervasyon', route: '/(tabs)/reservations' as const, color: '#A23FEB' },
-  ];
   
+  // Ana içerik render
   return (
     <View style={styles.container}>
       <View style={styles.safeArea} />
+      
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Ana Sayfa</Text>
+      </View>
       
       <ScrollView 
         contentContainerStyle={styles.contentContainer}
@@ -92,7 +140,6 @@ export default function HomeScreen() {
       >
         {/* Arama Bölümü */}
         <View style={styles.searchSection}>
-          <Text style={styles.appTitle}>Apartman Yönetimi</Text>
           <Text style={styles.searchTitle}>Nasıl yardımcı olabiliriz?</Text>
           <View style={styles.searchContainer}>
             <Ionicons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
@@ -119,7 +166,7 @@ export default function HomeScreen() {
                 style={styles.serviceItem}
                 onPress={() => router.push(service.route)}
               >
-                <View style={[styles.serviceIconContainer, {backgroundColor: service.color}]}>
+                <View style={styles.serviceIconContainer}>
                   <Ionicons name={service.icon} size={24} color={Colors.white} />
                 </View>
                 <Text style={styles.serviceText}>{service.label}</Text>
@@ -145,8 +192,8 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalScrollContent}
           >
-            {announcements.length > 0 ? (
-              announcements.map((announcement: any, index) => (
+            {recentAnnouncements.length > 0 ? (
+              recentAnnouncements.map((announcement: Announcement) => (
                 <TouchableOpacity 
                   key={announcement._id} 
                   style={styles.dealCard}
@@ -155,14 +202,20 @@ export default function HomeScreen() {
                     params: { id: announcement._id }
                   })}
                 >
-                  <View style={[styles.dealImagePlaceholder, {backgroundColor: Colors.primary}]}>
+                  <View style={[
+                    styles.dealImagePlaceholder, 
+                    {backgroundColor: announcement.priority === 'URGENT' || announcement.priority === 'HIGH' 
+                      ? Colors.warning 
+                      : Colors.primary
+                    }
+                  ]}>
                     <Ionicons name="newspaper-outline" size={36} color={Colors.white} />
                   </View>
                   <View style={styles.dealContent}>
                     <View style={styles.dealTitleRow}>
                       <Text style={styles.dealTitle} numberOfLines={1}>{announcement.title}</Text>
                       <View style={styles.ratingContainer}>
-                        {announcement.priority === 'HIGH' && (
+                        {announcement.priority === 'URGENT' && (
                           <View style={styles.priorityIcon}>
                             <Ionicons name="alert" size={12} color={Colors.white} />
                           </View>
@@ -187,7 +240,7 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
         
-        {/* Popüler Hizmetler */}
+        {/* Arıza Bildirimleri */}
         <View style={styles.popularSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Arıza Bildirimlerim</Text>
@@ -204,8 +257,8 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalScrollContent}
           >
-            {maintenanceRequests.length > 0 ? (
-              maintenanceRequests.map((request: any, index) => (
+            {recentMaintenanceRequests.length > 0 ? (
+              recentMaintenanceRequests.map((request: MaintenanceRequest) => (
                 <TouchableOpacity 
                   key={request._id} 
                   style={styles.dealCard}
@@ -214,11 +267,14 @@ export default function HomeScreen() {
                     params: { id: request._id }
                   })}
                 >
-                  <View style={[styles.dealImagePlaceholder, {backgroundColor: 
-                    request.status === 'COMPLETED' ? Colors.success : 
-                    request.status === 'IN_PROGRESS' ? Colors.warning : 
-                    request.status === 'CANCELLED' ? Colors.error : Colors.info
-                  }]}>
+                  <View style={[
+                    styles.dealImagePlaceholder, 
+                    {backgroundColor: 
+                      request.status === 'COMPLETED' ? Colors.success : 
+                      request.status === 'IN_PROGRESS' ? Colors.info : 
+                      request.status === 'CANCELLED' ? Colors.error : Colors.warning
+                    }
+                  ]}>
                     <Ionicons name="construct-outline" size={36} color={Colors.white} />
                   </View>
                   <View style={styles.dealContent}>
@@ -249,56 +305,10 @@ export default function HomeScreen() {
             )}
           </ScrollView>
         </View>
-        
-        {/* Hızlı İşlemler */}
-        <View style={styles.quickActions}>
-          <Text style={styles.sectionTitle}>Hızlı İşlemler</Text>
-          <View style={styles.actionsGrid}>
-            <TouchableOpacity 
-              style={styles.actionItem}
-              onPress={() => router.push('/(tabs)/maintenance/new' as any)}
-            >
-              <View style={[styles.actionIconContainer, {backgroundColor: Colors.warning}]}>
-                <Ionicons name="build-outline" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.actionText}>Arıza Bildir</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.actionItem}
-              onPress={() => router.push('/(tabs)/payments/new' as any)}
-            >
-              <View style={[styles.actionIconContainer, {backgroundColor: Colors.success}]}>
-                <Ionicons name="card-outline" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.actionText}>Ödeme Yap</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.actionItem}
-              onPress={() => router.push('/(tabs)/reservations/new' as any)}
-            >
-              <View style={[styles.actionIconContainer, {backgroundColor: '#9C27B0'}]}>
-                <Ionicons name="calendar-outline" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.actionText}>Rezervasyon</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.actionItem}
-              onPress={() => Alert.alert('Yardım', 'Yardım almak için yönetici ile iletişime geçebilirsiniz.')}
-            >
-              <View style={[styles.actionIconContainer, {backgroundColor: Colors.info}]}>
-                <Ionicons name="help-circle-outline" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.actionText}>Yardım</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
       </ScrollView>
       
       {/* BottomNav bileşenini kullan */}
-      <BottomNav />
+      {/* BottomNav artık Tabs tarafından otomatik olarak eklendiği için kaldırıldı */}
     </View>
   );
 }
@@ -312,10 +322,19 @@ const styles = StyleSheet.create({
     height: 35, // Sadece durum çubuğu için yer 
     backgroundColor: Colors.white,
   },
-  appTitle: {
-    fontSize: 24,
+  header: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.white,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  headerTitle: {
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 12,
     color: Colors.black,
   },
   contentContainer: {
@@ -399,6 +418,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
+    backgroundColor: Colors.primary,
   },
   serviceText: {
     fontSize: 14,
@@ -520,44 +540,6 @@ const styles = StyleSheet.create({
   statusTextSmall: {
     color: '#4a4a4a',
     fontSize: 12,
-    fontWeight: '500',
-  },
-  quickActions: {
-    padding: 16,
-    marginTop: 8,
-    backgroundColor: Colors.white,
-    marginHorizontal: 16,
-    borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  actionItem: {
-    width: '48%',
-    alignItems: 'center',
-    marginBottom: 16,
-    paddingVertical: 16,
-    backgroundColor: Colors.background,
-    borderRadius: 12,
-  },
-  actionIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  actionText: {
-    fontSize: 14,
-    color: Colors.black,
     fontWeight: '500',
   },
 });
