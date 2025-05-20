@@ -59,6 +59,7 @@ export default function RootLayout() {
             <Stack.Screen name="payments/details/[id]" options={{ title: 'Ödeme Detayı' }} />
             <Stack.Screen name="maintenance/create" options={{ title: 'Arıza Bildir' }} />
             <Stack.Screen name="maintenance/details/[id]" options={{ title: 'Arıza Detayı' }} />
+            <Stack.Screen name="admin" options={{ headerShown: false }} />
           </Stack>
         </AppProvider>
       </PaperProvider>

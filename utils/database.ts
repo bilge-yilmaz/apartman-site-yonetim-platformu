@@ -81,10 +81,10 @@ const initDatabase = async (): Promise<void> => {
     // Use execAsync instead of withTransactionAsync for simpler execution
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS payments_cache (
-        id TEXT PRIMARY KEY NOT NULL,
-        userId TEXT,
-        data TEXT NOT NULL,
-        lastUpdated TEXT NOT NULL
+            id TEXT PRIMARY KEY NOT NULL,
+            userId TEXT,
+            data TEXT NOT NULL,
+            lastUpdated TEXT NOT NULL
       );
     `);
     console.log('Database initialized successfully (payments_cache table checked/created).');
@@ -113,12 +113,12 @@ export const cachePaymentsDb = async (payments: Payment[], userId: string): Prom
     await db.runAsync('DELETE FROM payments_cache WHERE userId = ?;', [userId]);
 
     // Then insert new entries one by one
-    for (const payment of payments) {
+      for (const payment of payments) {
       await db.runAsync(
-        'INSERT INTO payments_cache (id, userId, data, lastUpdated) VALUES (?, ?, ?, ?);',
-        [payment._id, userId, JSON.stringify(payment), timestamp]
-      );
-    }
+          'INSERT INTO payments_cache (id, userId, data, lastUpdated) VALUES (?, ?, ?, ?);',
+          [payment._id, userId, JSON.stringify(payment), timestamp]
+        );
+      }
     console.log(`Payments cached successfully for user ${userId} in SQLite.`);
   } catch (error) {
     console.error('Transaction error caching payments:', error);

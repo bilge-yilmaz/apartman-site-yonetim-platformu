@@ -84,99 +84,99 @@ export default function ProfileScreen() {
       
       <ScrollView contentContainerStyle={styles.contentContainer}>
         <View style={styles.profileHeader}>
-          {user.image ? (
-            <Image source={{ uri: user.image }} style={styles.avatar} />
-          ) : (
-            <Avatar.Text 
+        {user.image ? (
+          <Image source={{ uri: user.image }} style={styles.avatar} />
+        ) : (
+          <Avatar.Text 
               size={80} 
-              label={user.name?.substring(0, 2).toUpperCase() || 'U'} 
-              style={styles.avatarText}
+            label={user.name?.substring(0, 2).toUpperCase() || 'U'} 
+            style={styles.avatarText}
               labelStyle={styles.avatarLabel}
-            />
-          )}
-          <Text style={styles.name}>{user.name}</Text>
-          <Text style={styles.email}>{user.email}</Text>
-          <View style={styles.roleContainer}>
-            <Text style={styles.roleText}>{getRoleText(user.role || 'RESIDENT')}</Text>
-          </View>
+          />
+        )}
+        <Text style={styles.name}>{user.name}</Text>
+        <Text style={styles.email}>{user.email}</Text>
+        <View style={styles.roleContainer}>
+          <Text style={styles.roleText}>{getRoleText(user.role || 'RESIDENT')}</Text>
         </View>
+      </View>
 
-        <Card style={styles.card}>
-          <Card.Content>
+      <Card style={styles.card}>
+        <Card.Content>
             <View style={styles.cardTitleContainer}>
               <Ionicons name="home-outline" size={24} color={Colors.primary} style={{marginRight: 8}} />
-              <Text style={styles.sectionTitle}>Daire Bilgileri</Text>
+          <Text style={styles.sectionTitle}>Daire Bilgileri</Text>
             </View>
-            <Divider style={styles.divider} />
-            
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Blok</Text>
-              <Text style={styles.infoValue}>{user.block || '-'}</Text>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Daire No</Text>
-              <Text style={styles.infoValue}>{user.apartmentNo || '-'}</Text>
-            </View>
-            
-            <Button 
-              mode="outlined" 
-              icon="pencil" 
-              onPress={() => router.push('/profile/edit')}
-              style={styles.editButton}
+          <Divider style={styles.divider} />
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Blok</Text>
+            <Text style={styles.infoValue}>{user.block || '-'}</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Daire No</Text>
+            <Text style={styles.infoValue}>{user.apartmentNo || '-'}</Text>
+          </View>
+          
+          <Button 
+            mode="outlined" 
+            icon="pencil" 
+            onPress={() => router.push('/profile/edit')}
+            style={styles.editButton}
               textColor={Colors.primary}
-            >
-              Profili Düzenle
-            </Button>
-          </Card.Content>
-        </Card>
+          >
+            Profili Düzenle
+          </Button>
+        </Card.Content>
+      </Card>
 
-        <Card style={styles.card}>
-          <Card.Content>
+      <Card style={styles.card}>
+        <Card.Content>
             <View style={styles.cardTitleContainer}>
               <Ionicons name="settings-outline" size={24} color={Colors.primary} style={{marginRight: 8}} />
-              <Text style={styles.sectionTitle}>Hesap</Text>
+          <Text style={styles.sectionTitle}>Hesap</Text>
             </View>
-            <Divider style={styles.divider} />
-            
-            <TouchableOpacity style={styles.menuItem}>
+          <Divider style={styles.divider} />
+          
+          <TouchableOpacity style={styles.menuItem}>
               <View style={styles.menuItemContent}>
                 <Ionicons name="notifications-outline" size={22} color="#666" style={{marginRight: 12}} />
-                <Text style={styles.menuItemText}>Bildirim Ayarları</Text>
+            <Text style={styles.menuItemText}>Bildirim Ayarları</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#999" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.menuItem}>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.menuItem}>
               <View style={styles.menuItemContent}>
                 <Ionicons name="help-circle-outline" size={22} color="#666" style={{marginRight: 12}} />
-                <Text style={styles.menuItemText}>Yardım ve Destek</Text>
+            <Text style={styles.menuItemText}>Yardım ve Destek</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#999" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.menuItem}>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.menuItem}>
               <View style={styles.menuItemContent}>
                 <Ionicons name="information-circle-outline" size={22} color="#666" style={{marginRight: 12}} />
-                <Text style={styles.menuItemText}>Hakkında</Text>
+            <Text style={styles.menuItemText}>Hakkında</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#999" />
-            </TouchableOpacity>
-            
-            <Button 
-              mode="outlined" 
-              icon="logout" 
-              onPress={handleLogout}
-              textColor="#F44336"
-              style={styles.logoutButton}
-              loading={isLoading}
-              disabled={isLoading}
-            >
-              Çıkış Yap
-            </Button>
-          </Card.Content>
-        </Card>
-      </ScrollView>
+          </TouchableOpacity>
+          
+          <Button 
+            mode="outlined" 
+            icon="logout" 
+            onPress={handleLogout}
+            textColor="#F44336"
+            style={styles.logoutButton}
+            loading={isLoading}
+            disabled={isLoading}
+          >
+            Çıkış Yap
+          </Button>
+        </Card.Content>
+      </Card>
+    </ScrollView>
     </View>
   );
 }

@@ -114,9 +114,9 @@ export default function HomeScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.safeArea} />
-        <View style={styles.loadingContainer}>
+      <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Yükleniyor...</Text>
+        <Text style={styles.loadingText}>Yükleniyor...</Text>
         </View>
       </View>
     );
@@ -131,13 +131,13 @@ export default function HomeScreen() {
         <Text style={styles.headerTitle}>Ana Sayfa</Text>
       </View>
       
-      <ScrollView 
-        contentContainerStyle={styles.contentContainer}
-        refreshControl={
+    <ScrollView 
+      contentContainerStyle={styles.contentContainer}
+      refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-        }
+      }
         showsVerticalScrollIndicator={false}
-      >
+    >
         {/* Arama Bölümü */}
         <View style={styles.searchSection}>
           <Text style={styles.searchTitle}>Nasıl yardımcı olabiliriz?</Text>
@@ -170,23 +170,23 @@ export default function HomeScreen() {
                   <Ionicons name={service.icon} size={24} color={Colors.white} />
                 </View>
                 <Text style={styles.serviceText}>{service.label}</Text>
-              </TouchableOpacity>
+        </TouchableOpacity>
             ))}
           </View>
-        </View>
-        
-        {/* Son Duyurular */}
+      </View>
+      
+      {/* Son Duyurular */}
         <View style={styles.dealsSection}>
-          <View style={styles.sectionHeader}>
+        <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Son Duyurular</Text>
             <Text 
               style={styles.seeAllText}
-              onPress={() => router.push('/(tabs)/announcements')}
-            >
-              Tümünü Gör
+            onPress={() => router.push('/(tabs)/announcements')}
+          >
+            Tümünü Gör
             </Text>
-          </View>
-          
+        </View>
+        
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
@@ -218,9 +218,9 @@ export default function HomeScreen() {
                         {announcement.priority === 'URGENT' && (
                           <View style={styles.priorityIcon}>
                             <Ionicons name="alert" size={12} color={Colors.white} />
-                          </View>
-                        )}
-                      </View>
+                    </View>
+                  )}
+                </View>
                     </View>
                     <Text style={styles.dealLocation} numberOfLines={1}>
                       {format(new Date(announcement.createdAt), 'dd MMM yyyy', { locale: tr })}
@@ -228,30 +228,30 @@ export default function HomeScreen() {
                     <Text style={styles.dealDesc} numberOfLines={2}>{announcement.content}</Text>
                   </View>
                 </TouchableOpacity>
-              ))
-            ) : (
+          ))
+        ) : (
               <View style={styles.emptyStateCard}>
                 <View style={styles.emptyIconContainer}>
                   <Ionicons name="alert-circle-outline" size={36} color="#999" />
                 </View>
                 <Text style={styles.emptyText}>Henüz duyuru bulunmuyor.</Text>
               </View>
-            )}
+        )}
           </ScrollView>
-        </View>
-        
+      </View>
+      
         {/* Arıza Bildirimleri */}
         <View style={styles.popularSection}>
-          <View style={styles.sectionHeader}>
+        <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Arıza Bildirimlerim</Text>
             <Text 
               style={styles.seeAllText}
-              onPress={() => router.push('/(tabs)/maintenance')}
-            >
-              Tümünü Gör
+            onPress={() => router.push('/(tabs)/maintenance')}
+          >
+            Tümünü Gör
             </Text>
-          </View>
-          
+        </View>
+        
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
@@ -282,8 +282,8 @@ export default function HomeScreen() {
                       <Text style={styles.dealTitle} numberOfLines={1}>{request.title}</Text>
                       <View style={styles.statusBadgeSmall}>
                         <Text style={styles.statusTextSmall}>
-                          {request.status === 'COMPLETED' ? 'Tamamlandı' : 
-                           request.status === 'IN_PROGRESS' ? 'İşlemde' : 
+                      {request.status === 'COMPLETED' ? 'Tamamlandı' : 
+                       request.status === 'IN_PROGRESS' ? 'İşlemde' : 
                            request.status === 'CANCELLED' ? 'İptal' : 'Bekliyor'}
                         </Text>
                       </View>
@@ -302,14 +302,14 @@ export default function HomeScreen() {
                 </View>
                 <Text style={styles.emptyText}>Henüz arıza bildiriminiz bulunmuyor.</Text>
               </View>
-            )}
+        )}
           </ScrollView>
-        </View>
+      </View>
       </ScrollView>
       
       {/* BottomNav bileşenini kullan */}
       {/* BottomNav artık Tabs tarafından otomatik olarak eklendiği için kaldırıldı */}
-    </View>
+      </View>
   );
 }
 

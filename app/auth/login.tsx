@@ -3,24 +3,56 @@ import { View, StyleSheet, Image, TouchableOpacity, KeyboardAvoidingView, Platfo
 import { TextInput, Button, Text } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useUserStore } from '../../store/user';
+import { loginUser } from '../../services/api';
+import storage from '../../utils/storage';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [secureTextEntry, setSecureTextEntry] = useState(true);
-  const { login, loginWithGoogle, isLoading } = useUserStore();
+  const { setUser, loginWithGoogle } = useUserStore();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Hata', 'Lütfen email ve şifrenizi giriniz');
-      return;
-    }
+    setLoading(true);
+    setError('');
 
     try {
-      await login(email, password);
-      router.replace('/(tabs)');
-    } catch (error: any) {
-      Alert.alert('Giriş Hatası', error.response?.data?.message || 'Giriş yapılamadı');
+      // Form validasyonu
+      if (!email || !password) {
+        setError('E-posta ve şifre alanları zorunludur.');
+        setLoading(false);
+        return;
+      }
+
+      // API isteği
+      const response = await loginUser(email, password);
+
+      if (response.success && response.user && response.token) {
+        // Kullanıcı bilgilerini kaydet
+        const userWithCorrectRole = {
+          ...response.user,
+          role: response.user.role as 'ADMIN' | 'MANAGER' | 'RESIDENT'
+        };
+        setUser(userWithCorrectRole);
+        
+        // Kullanıcı rolüne göre yönlendirme
+        if (userWithCorrectRole.role === 'ADMIN') {
+          // Admin paneline yönlendir
+          router.replace('/admin');
+        } else {
+          // Normal kullanıcı paneline yönlendir
+          router.replace('/(tabs)');
+        }
+      } else {
+        setError(response.error || 'Giriş yapılamadı. Lütfen bilgilerinizi kontrol edin.');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError('Bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -74,8 +106,8 @@ export default function LoginScreen() {
             mode="contained"
             onPress={handleLogin}
             style={styles.button}
-            loading={isLoading}
-            disabled={isLoading}
+            loading={loading}
+            disabled={loading}
           >
             Giriş Yap
           </Button>
@@ -91,7 +123,7 @@ export default function LoginScreen() {
             icon="google"
             onPress={handleGoogleLogin}
             style={styles.googleButton}
-            disabled={isLoading}
+            disabled={loading}
           >
             Google ile Giriş Yap
           </Button>

@@ -579,6 +579,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#7f8c8d',
     marginTop: 6,
+    marginBottom: 12,
   },
   newButton: {
     backgroundColor: Colors.primary,
@@ -652,8 +653,9 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   activeTab: {
     backgroundColor: Colors.primary,
@@ -662,6 +664,7 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     fontWeight: '500',
     fontSize: 15,
+    textAlign: 'center',
   },
   activeTabText: {
     color: '#fff',

@@ -91,7 +91,7 @@ export default function AnnouncementsScreen() {
             </Chip>
           }
           {item.priority && (
-            <Chip 
+          <Chip 
               style={[styles.priorityChip, { backgroundColor: getPriorityColor(item.priority) }]}
             >
               <Text style={styles.priorityText}>
@@ -99,7 +99,7 @@ export default function AnnouncementsScreen() {
                   item.priority === 'URGENT' ? 'Acil' : 
                   item.priority === 'MEDIUM' ? 'Normal' : 'Düşük'}
               </Text>
-            </Chip>
+          </Chip>
           )}
         </View>
         
@@ -110,14 +110,14 @@ export default function AnnouncementsScreen() {
             <MaterialIcons name="date-range" size={18} color={Colors.primary} />
             <Text style={styles.detailText}>
               {new Date(item.createdAt).toLocaleDateString('tr-TR')}
-            </Text>
+        </Text>
           </View>
         </View>
       </Card.Content>
     </Card>
   );
 
-  return (
+    return (
     <View style={styles.container}>
       <View style={styles.safeArea} />
       
@@ -177,12 +177,12 @@ export default function AnnouncementsScreen() {
         </View>
 
         {isLoading && announcements.length === 0 ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={styles.loadingText}>Duyurular yükleniyor...</Text>
-          </View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={styles.loadingText}>Duyurular yükleniyor...</Text>
+      </View>
         ) : displayAnnouncements.length === 0 ? (
-          <View style={styles.emptyContainer}>
+        <View style={styles.emptyContainer}>
             <View style={styles.emptyIconContainer}>
               <Ionicons name="megaphone-outline" size={36} color="#999" />
             </View>
@@ -202,8 +202,8 @@ export default function AnnouncementsScreen() {
             >
               Yenile
             </Button>
-          </View>
-        ) : (
+        </View>
+      ) : (
           <View style={styles.announcementsContainer}>
             <Text style={styles.sectionTitle}>
               {activeTab === 'all' 
