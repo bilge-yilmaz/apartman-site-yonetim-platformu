@@ -91,7 +91,7 @@ export default function AdminDashboard() {
               </View>
               <Button 
                 mode="outlined" 
-                onPress={() => router.push("../residents")}
+                onPress={() => router.push("/admin/residents")}
                 style={styles.cardButton}
               >
                 Kullanıcıları Yönet
@@ -119,7 +119,7 @@ export default function AdminDashboard() {
               </View>
               <Button 
                 mode="outlined" 
-                onPress={() => router.push("../payments")}
+                onPress={() => router.push("/admin/payments")}
                 style={styles.cardButton}
               >
                 Aidatları Yönet
@@ -151,7 +151,7 @@ export default function AdminDashboard() {
               </View>
               <Button 
                 mode="outlined" 
-                onPress={() => router.push("../maintenance")}
+                onPress={() => router.push("/admin/maintenance")}
                 style={styles.cardButton}
               >
                 Talepleri Yönet
@@ -175,7 +175,7 @@ export default function AdminDashboard() {
               </View>
               <Button 
                 mode="outlined" 
-                onPress={() => router.push("../announcements")}
+                onPress={() => router.push("/admin/announcements")}
                 style={styles.cardButton}
               >
                 Duyuruları Yönet
