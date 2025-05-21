@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import storage, { User } from '../utils/storage';
 import { apiServices, apiQueue } from '../utils/api-services';
-import authService from '../utils/auth';
+import authService, { decodeToken } from '../utils/auth';
 import NetInfo from '@react-native-community/netinfo';
 
 // User tipi artık storage.ts'den içe aktarılıyor
@@ -37,63 +37,92 @@ export const useUserStore = create<UserStore>((set, get) => ({
   hydrate: async () => {
     try {
       console.log('Kullanıcı bilgileri yükleniyor...');
-      const user = await storage.getUser();
       
-      if (user) {
-        console.log('Storage\'dan kullanıcı bilgileri alındı:', user);
-        set({ user });
+      // İnternet bağlantısı kontrolü
+      const netInfo = await NetInfo.fetch();
+      const isOnline = netInfo.isConnected;
+      console.log('İnternet bağlantısı:', isOnline ? 'Var' : 'Yok');
+      
+      // İlk olarak bellekteki kullanıcı bilgilerini kontrol et
+      const storedUser = await storage.getUser();
+      
+      // Token kontrolü
+      const token = await storage.getToken();
+      console.log('Token durumu:', token ? 'Token var' : 'Token yok');
+      
+      if (token) {
+        // Token'dan kullanıcı bilgilerini çöz
+        const decodedUser = decodeToken(token);
+        console.log('Token\'dan çözülen kullanıcı:', decodedUser);
         
-        // İnternet bağlantısı varsa profil bilgilerini güncelle
-        const netInfo = await NetInfo.fetch();
-        console.log('İnternet bağlantısı:', netInfo.isConnected ? 'Var' : 'Yok');
-        
-        if (netInfo.isConnected) {
-          try {
-            console.log('Profil bilgileri API\'den alınıyor...');
-            const profileData = await apiServices.profile.getProfile();
-            console.log('Alınan profil bilgileri:', profileData);
-            
-            if (profileData) {
-              const updatedUser = { ...user, ...profileData };
-              set({ user: updatedUser });
-              await storage.setUser(updatedUser);
-              console.log('Kullanıcı bilgileri güncellendi');
+        if (decodedUser) {
+          // Eğer bellekte kullanıcı bilgileri yoksa veya farklıysa, token'dan gelen bilgileri kullan
+          if (!storedUser || storedUser.id !== decodedUser.id) {
+            console.log('Token\'dan gelen kullanıcı bilgileri kullanılıyor');
+            await storage.setUser(decodedUser);
+            set({ user: decodedUser });
+          } else {
+            // Bellekteki kullanıcı bilgilerini kullan
+            console.log('Bellekteki kullanıcı bilgileri kullanılıyor');
+            set({ user: storedUser });
+          }
+          
+          // Online ise API'den profil bilgilerini al - API'den gelen bilgiler öncelikli
+          if (isOnline) {
+            try {
+              console.log('API\'den profil bilgileri alınıyor...');
+              const profileData = await apiServices.profile.getProfile();
+              
+              if (profileData) {
+                console.log('API\'den alınan profil bilgileri:', profileData);
+                // API'den gelen bilgileri öncelikli olarak kullan, eksik alanları token veya bellekten tamamla
+                const currentUser = get().user;
+                if (currentUser) {
+                  // API'den gelen bilgileri token ve bellekteki bilgilerle birleştir
+                  const updatedUser = { 
+                    ...currentUser,
+                    ...profileData,
+                    // API'den eksik gelen kritik alanlar için backup
+                    id: profileData.id || currentUser.id,
+                    email: profileData.email || currentUser.email,
+                    role: profileData.role || currentUser.role
+                  };
+                  console.log('Güncel profil bilgileri:', updatedUser);
+                  set({ user: updatedUser });
+                  await storage.setUser(updatedUser);
+                }
+              } else {
+                console.log('API\'den profil bilgisi alınamadı');
+              }
+            } catch (error) {
+              console.error('Profil bilgileri alınırken hata:', error);
+              // Hata durumunda mevcut bilgileri koruyoruz
             }
-          } catch (error) {
-            console.error('Profil bilgileri güncellenirken hata:', error);
-            // Hata durumunda mevcut kullanıcı bilgilerini kullan
-            // Kullanıcı null olarak ayarlanmamalı
+          }
+        } else {
+          console.log('Token decode edilemedi');
+          // Token geçersizse ve bellekte kullanıcı bilgileri varsa, bunları kullan
+          if (storedUser) {
+            console.log('Bellekteki kullanıcı bilgileri kullanılıyor');
+            set({ user: storedUser });
+          } else {
+            console.log('Geçerli kullanıcı bilgisi bulunamadı, oturum kapatılıyor');
+            set({ user: null });
+            await storage.removeToken();
           }
         }
       } else {
-        console.log('Storage\'da kullanıcı bilgisi bulunamadı');
-        
-        // Token var mı kontrol et
-        const token = await storage.getToken();
-        if (token) {
-          console.log('Token bulundu, kullanıcı bilgileri oluşturuluyor');
-          
-          // Basit bir kullanıcı nesnesi oluştur
-          const basicUser: User = {
-            id: 'temp-id',
-            name: 'Site Yöneticisi',
-            email: 'admin@apartman-site.com',
-            role: 'ADMIN',
-            isActive: true
-          };
-          
-          set({ user: basicUser });
-          await storage.setUser(basicUser);
-          console.log('Geçici kullanıcı bilgileri oluşturuldu');
-        } else {
-          console.log('Token bulunamadı, kullanıcı oturum açmamış');
-          set({ user: null });
+        // Token yoksa ve bellekte kullanıcı bilgileri varsa bunları temizle
+        if (storedUser) {
+          console.log('Token olmadığı için bellekteki kullanıcı bilgileri temizleniyor');
+          await storage.removeUser();
         }
+        console.log('Oturum açılmamış');
+        set({ user: null });
       }
     } catch (error) {
       console.error('Kullanıcı bilgileri yüklenirken hata:', error);
-      // Hata durumunda kullanıcıyı null olarak ayarlama
-      // set({ user: null });
+      // Hata durumunda mevcut durumu koruyoruz, null'a çekmiyoruz
     }
   },
   

@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
 import { Announcement } from '../../services/api';
+import AdminPageGuard from '../../components/AdminPageGuard';
 
 export default function AdminAnnouncementsScreen() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -177,106 +178,108 @@ export default function AdminAnnouncementsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.safeArea} />
-      
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Duyurular</Text>
-      </View>
-      
-      <ScrollView 
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-        }
-      >
-        <View style={styles.content}>
-          <Text style={styles.title}>Duyurular</Text>
-          <Text style={styles.subtitle}>Site duyurularını görüntüleyin ve yönetin.</Text>
-          
-          <Searchbar
-            placeholder="Ara..."
-            onChangeText={onChangeSearch}
-            value={searchQuery}
-            style={styles.searchBar}
-          />
-          
-          {filteredAnnouncements.map((announcement) => (
-            <Card 
-              key={announcement._id} 
-              style={[
-                styles.card, 
-                { 
-                  borderLeftWidth: 5,
-                  borderLeftColor: 
-                    announcement.priority === 'URGENT' ? Colors.error :
-                    announcement.priority === 'HIGH' ? '#FF9800' :
-                    announcement.priority === 'MEDIUM' ? Colors.warning : 
-                    Colors.success
-                }
-              ]}
-            >
-              <Card.Content>
-                <View style={styles.cardHeader}>
-                  <View style={styles.titleContainer}>
-                    <Text style={styles.cardTitle}>{announcement.title}</Text>
-                    {getPriorityChip(announcement.priority)}
-                  </View>
-                  <IconButton
-                    icon="dots-vertical"
-                    size={20}
-                    onPress={() => openMenu(announcement)}
-                  />
-                </View>
-                
-                <Text style={styles.cardDate}>
-                  {new Date(announcement.createdAt).toLocaleDateString('tr-TR')}
-                </Text>
-                
-                <Text style={styles.cardContent} numberOfLines={3}>
-                  {announcement.content}
-                </Text>
-                
-                <View style={styles.cardActions}>
-                  <Button 
-                    mode="text" 
-                    onPress={() => console.log('Detay:', announcement._id)}
-                  >
-                    Detaylar
-                  </Button>
-                </View>
-              </Card.Content>
-            </Card>
-          ))}
+    <AdminPageGuard>
+      <View style={styles.container}>
+        <View style={styles.safeArea} />
+        
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Duyurular</Text>
         </View>
-      </ScrollView>
-
-      <FAB
-        style={styles.fab}
-        icon="plus"
-        onPress={() => console.log('Yeni duyuru ekle')}
-        color="white"
-      />
-
-      {selectedAnnouncement && (
-        <Menu
-          visible={menuVisible}
-          onDismiss={closeMenu}
-          anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
+        
+        <ScrollView 
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+          }
         >
-          <Menu.Item 
-            onPress={handleEditAnnouncement} 
-            title="Düzenle" 
-            leadingIcon="pencil" 
-          />
-          <Menu.Item 
-            onPress={handleDeleteAnnouncement} 
-            title="Sil" 
-            leadingIcon="delete" 
-          />
-        </Menu>
-      )}
-    </View>
+          <View style={styles.content}>
+            <Text style={styles.title}>Duyurular</Text>
+            <Text style={styles.subtitle}>Site duyurularını görüntüleyin ve yönetin.</Text>
+            
+            <Searchbar
+              placeholder="Ara..."
+              onChangeText={onChangeSearch}
+              value={searchQuery}
+              style={styles.searchBar}
+            />
+            
+            {filteredAnnouncements.map((announcement) => (
+              <Card 
+                key={announcement._id} 
+                style={[
+                  styles.card, 
+                  { 
+                    borderLeftWidth: 5,
+                    borderLeftColor: 
+                      announcement.priority === 'URGENT' ? Colors.error :
+                      announcement.priority === 'HIGH' ? '#FF9800' :
+                      announcement.priority === 'MEDIUM' ? Colors.warning : 
+                      Colors.success
+                  }
+                ]}
+              >
+                <Card.Content>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.titleContainer}>
+                      <Text style={styles.cardTitle}>{announcement.title}</Text>
+                      {getPriorityChip(announcement.priority)}
+                    </View>
+                    <IconButton
+                      icon="dots-vertical"
+                      size={20}
+                      onPress={() => openMenu(announcement)}
+                    />
+                  </View>
+                  
+                  <Text style={styles.cardDate}>
+                    {new Date(announcement.createdAt).toLocaleDateString('tr-TR')}
+                  </Text>
+                  
+                  <Text style={styles.cardContent} numberOfLines={3}>
+                    {announcement.content}
+                  </Text>
+                  
+                  <View style={styles.cardActions}>
+                    <Button 
+                      mode="text" 
+                      onPress={() => console.log('Detay:', announcement._id)}
+                    >
+                      Detaylar
+                    </Button>
+                  </View>
+                </Card.Content>
+              </Card>
+            ))}
+          </View>
+        </ScrollView>
+
+        <FAB
+          style={styles.fab}
+          icon="plus"
+          onPress={() => console.log('Yeni duyuru ekle')}
+          color="white"
+        />
+
+        {selectedAnnouncement && (
+          <Menu
+            visible={menuVisible}
+            onDismiss={closeMenu}
+            anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
+          >
+            <Menu.Item 
+              onPress={handleEditAnnouncement} 
+              title="Düzenle" 
+              leadingIcon="pencil" 
+            />
+            <Menu.Item 
+              onPress={handleDeleteAnnouncement} 
+              title="Sil" 
+              leadingIcon="delete" 
+            />
+          </Menu>
+        )}
+      </View>
+    </AdminPageGuard>
   );
 }
 

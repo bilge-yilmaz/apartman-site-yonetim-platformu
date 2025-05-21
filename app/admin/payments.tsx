@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
 import { Payment } from '../../services/api';
+import AdminPageGuard from '../../components/AdminPageGuard';
 
 export default function AdminPaymentsScreen() {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -212,138 +213,140 @@ export default function AdminPaymentsScreen() {
     .reduce((sum, payment) => sum + payment.amount, 0);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.safeArea} />
-      
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Aidat Yönetimi</Text>
-      </View>
-      
-      <ScrollView 
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-        }
-      >
-        <View style={styles.content}>
-          <Text style={styles.title}>Aidat Yönetimi</Text>
-          <Text style={styles.subtitle}>Tüm aidat ödemelerini görüntüleyin ve yönetin.</Text>
-          
-          {/* Özet Kartları */}
-          <View style={styles.summaryContainer}>
-            <Card style={styles.summaryCard}>
-              <Card.Content>
-                <Text style={styles.summaryLabel}>Toplam</Text>
-                <Text style={[styles.summaryValue, { color: Colors.primary }]}>₺{totalAmount.toLocaleString()}</Text>
-              </Card.Content>
-            </Card>
-            
-            <Card style={styles.summaryCard}>
-              <Card.Content>
-                <Text style={styles.summaryLabel}>Ödenen</Text>
-                <Text style={[styles.summaryValue, { color: Colors.success }]}>₺{paidAmount.toLocaleString()}</Text>
-              </Card.Content>
-            </Card>
-            
-            <Card style={styles.summaryCard}>
-              <Card.Content>
-                <Text style={styles.summaryLabel}>Bekleyen</Text>
-                <Text style={[styles.summaryValue, { color: Colors.warning }]}>₺{pendingAmount.toLocaleString()}</Text>
-              </Card.Content>
-            </Card>
-            
-            <Card style={styles.summaryCard}>
-              <Card.Content>
-                <Text style={styles.summaryLabel}>Gecikmiş</Text>
-                <Text style={[styles.summaryValue, { color: Colors.error }]}>₺{overdueAmount.toLocaleString()}</Text>
-              </Card.Content>
-            </Card>
-          </View>
-          
-          {/* Filtreler */}
-          <View style={styles.filterContainer}>
-            <Searchbar
-              placeholder="Ara..."
-              onChangeText={onChangeSearch}
-              value={searchQuery}
-              style={styles.searchBar}
-            />
-            
-            <SegmentedButtons
-              value={statusFilter}
-              onValueChange={setStatusFilter}
-              buttons={[
-                { value: 'all', label: 'Tümü' },
-                { value: 'PENDING', label: 'Bekleyen' },
-                { value: 'PAID', label: 'Ödenen' },
-                { value: 'OVERDUE', label: 'Gecikmiş' },
-              ]}
-              style={styles.segmentedButtons}
-            />
-          </View>
-          
-          {/* Ödeme Tablosu */}
-          <Card style={styles.card}>
-            <DataTable>
-              <DataTable.Header>
-                <DataTable.Title>AÇIKLAMA</DataTable.Title>
-                <DataTable.Title numeric>TUTAR</DataTable.Title>
-                <DataTable.Title>SON ÖDEME</DataTable.Title>
-                <DataTable.Title>DURUM</DataTable.Title>
-                <DataTable.Title>İŞLEM</DataTable.Title>
-              </DataTable.Header>
-
-              {filteredPayments.map((payment) => (
-                <DataTable.Row key={payment._id}>
-                  <DataTable.Cell>{payment.description}</DataTable.Cell>
-                  <DataTable.Cell numeric>₺{payment.amount.toLocaleString()}</DataTable.Cell>
-                  <DataTable.Cell>{new Date(payment.dueDate).toLocaleDateString('tr-TR')}</DataTable.Cell>
-                  <DataTable.Cell>{getStatusChip(payment.status)}</DataTable.Cell>
-                  <DataTable.Cell>
-                    <TouchableOpacity onPress={() => openMenu(payment)}>
-                      <Ionicons name="ellipsis-vertical" size={20} color="#666" />
-                    </TouchableOpacity>
-                  </DataTable.Cell>
-                </DataTable.Row>
-              ))}
-            </DataTable>
-          </Card>
+    <AdminPageGuard>
+      <View style={styles.container}>
+        <View style={styles.safeArea} />
+        
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Aidat Yönetimi</Text>
         </View>
-      </ScrollView>
-
-      <FAB
-        style={styles.fab}
-        icon="plus"
-        onPress={() => console.log('Yeni aidat ekle')}
-        color="white"
-      />
-
-      {selectedPayment && (
-        <Menu
-          visible={menuVisible}
-          onDismiss={closeMenu}
-          anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
+        
+        <ScrollView 
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+          }
         >
-          {selectedPayment.status === 'PENDING' && (
+          <View style={styles.content}>
+            <Text style={styles.title}>Aidat Yönetimi</Text>
+            <Text style={styles.subtitle}>Tüm aidat ödemelerini görüntüleyin ve yönetin.</Text>
+            
+            {/* Özet Kartları */}
+            <View style={styles.summaryContainer}>
+              <Card style={styles.summaryCard}>
+                <Card.Content>
+                  <Text style={styles.summaryLabel}>Toplam</Text>
+                  <Text style={[styles.summaryValue, { color: Colors.primary }]}>₺{totalAmount.toLocaleString()}</Text>
+                </Card.Content>
+              </Card>
+              
+              <Card style={styles.summaryCard}>
+                <Card.Content>
+                  <Text style={styles.summaryLabel}>Ödenen</Text>
+                  <Text style={[styles.summaryValue, { color: Colors.success }]}>₺{paidAmount.toLocaleString()}</Text>
+                </Card.Content>
+              </Card>
+              
+              <Card style={styles.summaryCard}>
+                <Card.Content>
+                  <Text style={styles.summaryLabel}>Bekleyen</Text>
+                  <Text style={[styles.summaryValue, { color: Colors.warning }]}>₺{pendingAmount.toLocaleString()}</Text>
+                </Card.Content>
+              </Card>
+              
+              <Card style={styles.summaryCard}>
+                <Card.Content>
+                  <Text style={styles.summaryLabel}>Gecikmiş</Text>
+                  <Text style={[styles.summaryValue, { color: Colors.error }]}>₺{overdueAmount.toLocaleString()}</Text>
+                </Card.Content>
+              </Card>
+            </View>
+            
+            {/* Filtreler */}
+            <View style={styles.filterContainer}>
+              <Searchbar
+                placeholder="Ara..."
+                onChangeText={onChangeSearch}
+                value={searchQuery}
+                style={styles.searchBar}
+              />
+              
+              <SegmentedButtons
+                value={statusFilter}
+                onValueChange={setStatusFilter}
+                buttons={[
+                  { value: 'all', label: 'Tümü' },
+                  { value: 'PENDING', label: 'Bekleyen' },
+                  { value: 'PAID', label: 'Ödenen' },
+                  { value: 'OVERDUE', label: 'Gecikmiş' },
+                ]}
+                style={styles.segmentedButtons}
+              />
+            </View>
+            
+            {/* Ödeme Tablosu */}
+            <Card style={styles.card}>
+              <DataTable>
+                <DataTable.Header>
+                  <DataTable.Title>AÇIKLAMA</DataTable.Title>
+                  <DataTable.Title numeric>TUTAR</DataTable.Title>
+                  <DataTable.Title>SON ÖDEME</DataTable.Title>
+                  <DataTable.Title>DURUM</DataTable.Title>
+                  <DataTable.Title>İŞLEM</DataTable.Title>
+                </DataTable.Header>
+
+                {filteredPayments.map((payment) => (
+                  <DataTable.Row key={payment._id}>
+                    <DataTable.Cell>{payment.description}</DataTable.Cell>
+                    <DataTable.Cell numeric>₺{payment.amount.toLocaleString()}</DataTable.Cell>
+                    <DataTable.Cell>{new Date(payment.dueDate).toLocaleDateString('tr-TR')}</DataTable.Cell>
+                    <DataTable.Cell>{getStatusChip(payment.status)}</DataTable.Cell>
+                    <DataTable.Cell>
+                      <TouchableOpacity onPress={() => openMenu(payment)}>
+                        <Ionicons name="ellipsis-vertical" size={20} color="#666" />
+                      </TouchableOpacity>
+                    </DataTable.Cell>
+                  </DataTable.Row>
+                ))}
+              </DataTable>
+            </Card>
+          </View>
+        </ScrollView>
+
+        <FAB
+          style={styles.fab}
+          icon="plus"
+          onPress={() => console.log('Yeni aidat ekle')}
+          color="white"
+        />
+
+        {selectedPayment && (
+          <Menu
+            visible={menuVisible}
+            onDismiss={closeMenu}
+            anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
+          >
+            {selectedPayment.status === 'PENDING' && (
+              <Menu.Item 
+                onPress={handleMarkAsPaid} 
+                title="Ödendi İşaretle" 
+                leadingIcon="check-circle" 
+              />
+            )}
             <Menu.Item 
-              onPress={handleMarkAsPaid} 
-              title="Ödendi İşaretle" 
-              leadingIcon="check-circle" 
+              onPress={handleEditPayment} 
+              title="Düzenle" 
+              leadingIcon="pencil" 
             />
-          )}
-          <Menu.Item 
-            onPress={handleEditPayment} 
-            title="Düzenle" 
-            leadingIcon="pencil" 
-          />
-          <Menu.Item 
-            onPress={handleDeletePayment} 
-            title="Sil" 
-            leadingIcon="delete" 
-          />
-        </Menu>
-      )}
-    </View>
+            <Menu.Item 
+              onPress={handleDeletePayment} 
+              title="Sil" 
+              leadingIcon="delete" 
+            />
+          </Menu>
+        )}
+      </View>
+    </AdminPageGuard>
   );
 }
 

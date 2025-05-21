@@ -56,13 +56,29 @@ interface LoginResponse {
 
 export const loginUser = async (email_input: string, password_input: string): Promise<LoginResponse> => {
   try {
+    console.log(`API Login isteği gönderiliyor: ${email_input} / ${API_BASE_URL}/api/auth/login`);
+    
     const response = await apiClient.post<LoginResponse>('/api/auth/login', {
       email: email_input,
       password: password_input,
     });
+    
+    console.log('Login API yanıtı:', response.data);
+    
     if (response.data.success && response.data.token) {
       await storeToken(response.data.token);
+      console.log('Token güvenli şekilde saklandı');
+      
+      // API yanıtında user bilgisi olduğunu kontrol et
+      if (!response.data.user) {
+        console.error('API yanıtında kullanıcı bilgisi yok');
+        return { 
+          success: false, 
+          error: 'Kullanıcı bilgileri alınamadı'
+        };
+      }
     }
+    
     return response.data;
   } catch (error: any) {
     console.error('Login API error:', error.response?.data || error.message);

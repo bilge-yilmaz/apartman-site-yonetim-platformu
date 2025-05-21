@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
+import AdminPageGuard from '../../components/AdminPageGuard';
 
 // Arıza talebi tipi
 type MaintenanceRequest = {
@@ -285,205 +286,207 @@ export default function AdminMaintenanceScreen() {
   const completedRequests = requests.filter(r => r.status === 'COMPLETED').length;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.safeArea} />
-      
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Bakım Talepleri</Text>
-      </View>
-      
-      <ScrollView 
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-        }
-      >
-        <View style={styles.content}>
-          <Text style={styles.title}>Bakım Talepleri</Text>
-          <Text style={styles.subtitle}>Tüm bakım ve arıza taleplerini görüntüleyin ve yönetin.</Text>
-          
-          {/* Özet Kartları */}
-          <View style={styles.summaryContainer}>
-            <Card style={styles.summaryCard}>
-              <Card.Content>
-                <Text style={styles.summaryLabel}>Toplam</Text>
-                <Text style={[styles.summaryValue, { color: Colors.primary }]}>{totalRequests}</Text>
-              </Card.Content>
-            </Card>
-            
-            <Card style={styles.summaryCard}>
-              <Card.Content>
-                <Text style={styles.summaryLabel}>Bekleyen</Text>
-                <Text style={[styles.summaryValue, { color: Colors.warning }]}>{pendingRequests}</Text>
-              </Card.Content>
-            </Card>
-            
-            <Card style={styles.summaryCard}>
-              <Card.Content>
-                <Text style={styles.summaryLabel}>İşlemde</Text>
-                <Text style={[styles.summaryValue, { color: Colors.info }]}>{inProgressRequests}</Text>
-              </Card.Content>
-            </Card>
-            
-            <Card style={styles.summaryCard}>
-              <Card.Content>
-                <Text style={styles.summaryLabel}>Tamamlanan</Text>
-                <Text style={[styles.summaryValue, { color: Colors.success }]}>{completedRequests}</Text>
-              </Card.Content>
-            </Card>
-          </View>
-          
-          {/* Filtreler */}
-          <View style={styles.filterContainer}>
-            <Searchbar
-              placeholder="Ara..."
-              onChangeText={onChangeSearch}
-              value={searchQuery}
-              style={styles.searchBar}
-            />
-            
-            <SegmentedButtons
-              value={statusFilter}
-              onValueChange={setStatusFilter}
-              buttons={[
-                { value: 'all', label: 'Tümü' },
-                { value: 'PENDING', label: 'Bekleyen' },
-                { value: 'IN_PROGRESS', label: 'İşlemde' },
-                { value: 'COMPLETED', label: 'Tamamlanan' },
-              ]}
-              style={styles.segmentedButtons}
-            />
-          </View>
-          
-          {/* Talepler */}
-          {filteredRequests.map((request) => (
-            <Card 
-              key={request._id} 
-              style={[
-                styles.card, 
-                { 
-                  borderLeftWidth: 5,
-                  borderLeftColor: 
-                    request.priority === 'URGENT' ? Colors.error :
-                    request.priority === 'HIGH' ? '#FF9800' :
-                    request.priority === 'MEDIUM' ? Colors.warning : 
-                    Colors.success
-                }
-              ]}
-            >
-              <Card.Content>
-                <View style={styles.cardHeader}>
-                  <View style={styles.titleContainer}>
-                    <Text style={styles.cardTitle}>{request.title}</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => openMenu(request)}>
-                    <Ionicons name="ellipsis-vertical" size={20} color="#666" />
-                  </TouchableOpacity>
-                </View>
-                
-                <View style={styles.chipRow}>
-                  {getStatusChip(request.status)}
-                  {getPriorityChip(request.priority)}
-                  <Chip mode="outlined" style={styles.categoryChip}>
-                    {getCategoryText(request.category)}
-                  </Chip>
-                </View>
-                
-                <Text style={styles.cardDescription} numberOfLines={2}>
-                  {request.description}
-                </Text>
-                
-                <View style={styles.cardDetails}>
-                  <View style={styles.detailItem}>
-                    <MaterialIcons name="location-on" size={16} color={Colors.primary} />
-                    <Text style={styles.detailText}>{request.block}-{request.apartmentNo || 'Ortak Alan'}</Text>
-                  </View>
-                  
-                  <View style={styles.detailItem}>
-                    <MaterialIcons name="date-range" size={16} color={Colors.primary} />
-                    <Text style={styles.detailText}>
-                      {new Date(request.createdAt).toLocaleDateString('tr-TR')}
-                    </Text>
-                  </View>
-                </View>
-                
-                <View style={styles.cardActions}>
-                  <Button 
-                    mode="text" 
-                    onPress={() => console.log('Detay:', request._id)}
-                    icon="eye"
-                  >
-                    Detaylar
-                  </Button>
-                  
-                  {request.status === 'PENDING' && (
-                    <Button 
-                      mode="text" 
-                      onPress={() => handleUpdateStatus('IN_PROGRESS')}
-                      icon="play"
-                      textColor={Colors.info}
-                    >
-                      İşleme Al
-                    </Button>
-                  )}
-                  
-                  {request.status === 'IN_PROGRESS' && (
-                    <Button 
-                      mode="text" 
-                      onPress={() => handleUpdateStatus('COMPLETED')}
-                      icon="check"
-                      textColor={Colors.success}
-                    >
-                      Tamamla
-                    </Button>
-                  )}
-                </View>
-              </Card.Content>
-            </Card>
-          ))}
+    <AdminPageGuard>
+      <View style={styles.container}>
+        <View style={styles.safeArea} />
+        
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Bakım Talepleri</Text>
         </View>
-      </ScrollView>
-
-      <FAB
-        style={styles.fab}
-        icon="plus"
-        onPress={() => console.log('Yeni talep ekle')}
-        color="white"
-      />
-
-      {selectedRequest && (
-        <Menu
-          visible={menuVisible}
-          onDismiss={closeMenu}
-          anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
+        
+        <ScrollView 
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+          }
         >
-          <Menu.Item 
-            onPress={handleEditRequest} 
-            title="Düzenle" 
-            leadingIcon="pencil" 
-          />
-          {selectedRequest.status === 'PENDING' && (
+          <View style={styles.content}>
+            <Text style={styles.title}>Bakım Talepleri</Text>
+            <Text style={styles.subtitle}>Tüm bakım ve arıza taleplerini görüntüleyin ve yönetin.</Text>
+            
+            {/* Özet Kartları */}
+            <View style={styles.summaryContainer}>
+              <Card style={styles.summaryCard}>
+                <Card.Content>
+                  <Text style={styles.summaryLabel}>Toplam</Text>
+                  <Text style={[styles.summaryValue, { color: Colors.primary }]}>{totalRequests}</Text>
+                </Card.Content>
+              </Card>
+              
+              <Card style={styles.summaryCard}>
+                <Card.Content>
+                  <Text style={styles.summaryLabel}>Bekleyen</Text>
+                  <Text style={[styles.summaryValue, { color: Colors.warning }]}>{pendingRequests}</Text>
+                </Card.Content>
+              </Card>
+              
+              <Card style={styles.summaryCard}>
+                <Card.Content>
+                  <Text style={styles.summaryLabel}>İşlemde</Text>
+                  <Text style={[styles.summaryValue, { color: Colors.info }]}>{inProgressRequests}</Text>
+                </Card.Content>
+              </Card>
+              
+              <Card style={styles.summaryCard}>
+                <Card.Content>
+                  <Text style={styles.summaryLabel}>Tamamlanan</Text>
+                  <Text style={[styles.summaryValue, { color: Colors.success }]}>{completedRequests}</Text>
+                </Card.Content>
+              </Card>
+            </View>
+            
+            {/* Filtreler */}
+            <View style={styles.filterContainer}>
+              <Searchbar
+                placeholder="Ara..."
+                onChangeText={onChangeSearch}
+                value={searchQuery}
+                style={styles.searchBar}
+              />
+              
+              <SegmentedButtons
+                value={statusFilter}
+                onValueChange={setStatusFilter}
+                buttons={[
+                  { value: 'all', label: 'Tümü' },
+                  { value: 'PENDING', label: 'Bekleyen' },
+                  { value: 'IN_PROGRESS', label: 'İşlemde' },
+                  { value: 'COMPLETED', label: 'Tamamlanan' },
+                ]}
+                style={styles.segmentedButtons}
+              />
+            </View>
+            
+            {/* Talepler */}
+            {filteredRequests.map((request) => (
+              <Card 
+                key={request._id} 
+                style={[
+                  styles.card, 
+                  { 
+                    borderLeftWidth: 5,
+                    borderLeftColor: 
+                      request.priority === 'URGENT' ? Colors.error :
+                      request.priority === 'HIGH' ? '#FF9800' :
+                      request.priority === 'MEDIUM' ? Colors.warning : 
+                      Colors.success
+                  }
+                ]}
+              >
+                <Card.Content>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.titleContainer}>
+                      <Text style={styles.cardTitle}>{request.title}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => openMenu(request)}>
+                      <Ionicons name="ellipsis-vertical" size={20} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View style={styles.chipRow}>
+                    {getStatusChip(request.status)}
+                    {getPriorityChip(request.priority)}
+                    <Chip mode="outlined" style={styles.categoryChip}>
+                      {getCategoryText(request.category)}
+                    </Chip>
+                  </View>
+                  
+                  <Text style={styles.cardDescription} numberOfLines={2}>
+                    {request.description}
+                  </Text>
+                  
+                  <View style={styles.cardDetails}>
+                    <View style={styles.detailItem}>
+                      <MaterialIcons name="location-on" size={16} color={Colors.primary} />
+                      <Text style={styles.detailText}>{request.block}-{request.apartmentNo || 'Ortak Alan'}</Text>
+                    </View>
+                    
+                    <View style={styles.detailItem}>
+                      <MaterialIcons name="date-range" size={16} color={Colors.primary} />
+                      <Text style={styles.detailText}>
+                        {new Date(request.createdAt).toLocaleDateString('tr-TR')}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.cardActions}>
+                    <Button 
+                      mode="text" 
+                      onPress={() => console.log('Detay:', request._id)}
+                      icon="eye"
+                    >
+                      Detaylar
+                    </Button>
+                    
+                    {request.status === 'PENDING' && (
+                      <Button 
+                        mode="text" 
+                        onPress={() => handleUpdateStatus('IN_PROGRESS')}
+                        icon="play"
+                        textColor={Colors.info}
+                      >
+                        İşleme Al
+                      </Button>
+                    )}
+                    
+                    {request.status === 'IN_PROGRESS' && (
+                      <Button 
+                        mode="text" 
+                        onPress={() => handleUpdateStatus('COMPLETED')}
+                        icon="check"
+                        textColor={Colors.success}
+                      >
+                        Tamamla
+                      </Button>
+                    )}
+                  </View>
+                </Card.Content>
+              </Card>
+            ))}
+          </View>
+        </ScrollView>
+
+        <FAB
+          style={styles.fab}
+          icon="plus"
+          onPress={() => console.log('Yeni talep ekle')}
+          color="white"
+        />
+
+        {selectedRequest && (
+          <Menu
+            visible={menuVisible}
+            onDismiss={closeMenu}
+            anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
+          >
             <Menu.Item 
-              onPress={() => handleUpdateStatus('IN_PROGRESS')} 
-              title="İşleme Al" 
-              leadingIcon="play" 
+              onPress={handleEditRequest} 
+              title="Düzenle" 
+              leadingIcon="pencil" 
             />
-          )}
-          {selectedRequest.status === 'IN_PROGRESS' && (
+            {selectedRequest.status === 'PENDING' && (
+              <Menu.Item 
+                onPress={() => handleUpdateStatus('IN_PROGRESS')} 
+                title="İşleme Al" 
+                leadingIcon="play" 
+              />
+            )}
+            {selectedRequest.status === 'IN_PROGRESS' && (
+              <Menu.Item 
+                onPress={() => handleUpdateStatus('COMPLETED')} 
+                title="Tamamlandı İşaretle" 
+                leadingIcon="check" 
+              />
+            )}
             <Menu.Item 
-              onPress={() => handleUpdateStatus('COMPLETED')} 
-              title="Tamamlandı İşaretle" 
-              leadingIcon="check" 
+              onPress={handleDeleteRequest} 
+              title="Sil" 
+              leadingIcon="delete" 
             />
-          )}
-          <Menu.Item 
-            onPress={handleDeleteRequest} 
-            title="Sil" 
-            leadingIcon="delete" 
-          />
-        </Menu>
-      )}
-    </View>
+          </Menu>
+        )}
+      </View>
+    </AdminPageGuard>
   );
 }
 

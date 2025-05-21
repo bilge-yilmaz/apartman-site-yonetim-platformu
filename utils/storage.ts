@@ -77,19 +77,30 @@ export const storage = {
   },
 
   // Auth specific methods
-  /*
   async getToken(): Promise<string | null> {
-    return this.get<string>(KEYS.AUTH_TOKEN);
+    try {
+      return await SecureStore.getItemAsync(TOKEN_KEY);
+    } catch (error) {
+      console.error('Error getting token from SecureStore:', error);
+      return null;
+    }
   },
 
   async setToken(token: string) {
-    return this.set(KEYS.AUTH_TOKEN, token);
+    try {
+      await SecureStore.setItemAsync(TOKEN_KEY, token);
+    } catch (error) {
+      console.error('Error setting token in SecureStore:', error);
+    }
   },
 
   async removeToken() {
-    return this.remove(KEYS.AUTH_TOKEN);
+    try {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+    } catch (error) {
+      console.error('Error removing token from SecureStore:', error);
+    }
   },
-  */
 
   // User data methods
   async getUser(): Promise<User | null> {

@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lightTheme, darkTheme } from '../constants/theme';
 import { AppProvider } from '../utils/appContext';
+import { AuthGuard } from '../utils/AuthGuard';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../constants/Colors';
 
@@ -51,16 +52,18 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <PaperProvider theme={colorScheme === 'dark' ? darkTheme : lightTheme}>
         <AppProvider>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="auth/login" options={{ title: 'Giriş Yap' }} />
-            <Stack.Screen name="auth/register" options={{ title: 'Kayıt Ol' }} />
-            <Stack.Screen name="profile/edit" options={{ title: 'Profili Düzenle' }} />
-            <Stack.Screen name="payments/details/[id]" options={{ title: 'Ödeme Detayı' }} />
-            <Stack.Screen name="maintenance/create" options={{ title: 'Arıza Bildir' }} />
-            <Stack.Screen name="maintenance/details/[id]" options={{ title: 'Arıza Detayı' }} />
-            <Stack.Screen name="admin" options={{ headerShown: false }} />
-          </Stack>
+          <AuthGuard>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="auth/login" options={{ title: 'Giriş Yap' }} />
+              <Stack.Screen name="auth/register" options={{ title: 'Kayıt Ol' }} />
+              <Stack.Screen name="profile/edit" options={{ title: 'Profili Düzenle' }} />
+              <Stack.Screen name="payments/details/[id]" options={{ title: 'Ödeme Detayı' }} />
+              <Stack.Screen name="maintenance/create" options={{ title: 'Arıza Bildir' }} />
+              <Stack.Screen name="maintenance/details/[id]" options={{ title: 'Arıza Detayı' }} />
+              <Stack.Screen name="admin" options={{ headerShown: false }} />
+            </Stack>
+          </AuthGuard>
         </AppProvider>
       </PaperProvider>
     </QueryClientProvider>

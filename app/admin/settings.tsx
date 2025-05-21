@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
 import storage from '../../utils/storage';
+import AdminPageGuard from '../../components/AdminPageGuard';
 
 export default function AdminSettingsScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -91,118 +92,120 @@ export default function AdminSettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.safeArea} />
-      
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Ayarlar</Text>
-      </View>
-      
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.content}>
-          <Text style={styles.title}>Ayarlar</Text>
-          <Text style={styles.subtitle}>Uygulama ayarlarını yapılandırın.</Text>
-          
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text style={styles.sectionTitle}>Hesap Bilgileri</Text>
-              
-              <List.Item
-                title="E-posta"
-                description={user?.email}
-                left={props => <List.Icon {...props} icon="email" color={Colors.primary} />}
-              />
-              
-              <List.Item
-                title="Rol"
-                description="Yönetici"
-                left={props => <List.Icon {...props} icon="shield-account" color={Colors.primary} />}
-              />
-              
-              <Button 
-                mode="outlined" 
-                onPress={() => router.push('/profile/edit')}
-                style={styles.actionButton}
-                icon="account-edit"
-              >
-                Profili Düzenle
-              </Button>
-            </Card.Content>
-          </Card>
-          
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text style={styles.sectionTitle}>Uygulama Ayarları</Text>
-              
-              <List.Item
-                title="Bildirimler"
-                description="Uygulama bildirimlerini al"
-                left={props => <List.Icon {...props} icon="bell" color={Colors.primary} />}
-                right={props => (
-                  <Switch
-                    value={notificationsEnabled}
-                    onValueChange={handleNotificationsToggle}
-                    color={Colors.primary}
-                  />
-                )}
-              />
-              
-              <List.Item
-                title="Karanlık Tema"
-                description="Karanlık tema kullan"
-                left={props => <List.Icon {...props} icon="theme-light-dark" color={Colors.primary} />}
-                right={props => (
-                  <Switch
-                    value={darkModeEnabled}
-                    onValueChange={handleDarkModeToggle}
-                    color={Colors.primary}
-                  />
-                )}
-              />
-              
-              <Divider style={styles.divider} />
-              
-              <Button 
-                mode="outlined" 
-                onPress={handleClearCache}
-                style={styles.actionButton}
-                icon="cached"
-              >
-                Önbelleği Temizle
-              </Button>
-            </Card.Content>
-          </Card>
-          
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text style={styles.sectionTitle}>Hakkında</Text>
-              
-              <List.Item
-                title="Uygulama Versiyonu"
-                description="1.0.0"
-                left={props => <List.Icon {...props} icon="information" color={Colors.primary} />}
-              />
-              
-              <List.Item
-                title="Geliştirici"
-                description="Apartman Site Yönetimi"
-                left={props => <List.Icon {...props} icon="code-tags" color={Colors.primary} />}
-              />
-            </Card.Content>
-          </Card>
-          
-          <Button 
-            mode="contained" 
-            onPress={handleLogout}
-            style={[styles.actionButton, styles.logoutButton]}
-            icon="logout"
-            buttonColor={Colors.error}
-          >
-            Çıkış Yap
-          </Button>
+    <AdminPageGuard>
+      <View style={styles.container}>
+        <View style={styles.safeArea} />
+        
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Ayarlar</Text>
         </View>
-      </ScrollView>
-    </View>
+        
+        <ScrollView style={styles.scrollView}>
+          <View style={styles.content}>
+            <Text style={styles.title}>Ayarlar</Text>
+            <Text style={styles.subtitle}>Uygulama ayarlarını yapılandırın.</Text>
+            
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text style={styles.sectionTitle}>Hesap Bilgileri</Text>
+                
+                <List.Item
+                  title="E-posta"
+                  description={user?.email}
+                  left={props => <List.Icon {...props} icon="email" color={Colors.primary} />}
+                />
+                
+                <List.Item
+                  title="Rol"
+                  description="Yönetici"
+                  left={props => <List.Icon {...props} icon="shield-account" color={Colors.primary} />}
+                />
+                
+                <Button 
+                  mode="outlined" 
+                  onPress={() => router.push('/profile/edit')}
+                  style={styles.actionButton}
+                  icon="account-edit"
+                >
+                  Profili Düzenle
+                </Button>
+              </Card.Content>
+            </Card>
+            
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text style={styles.sectionTitle}>Uygulama Ayarları</Text>
+                
+                <List.Item
+                  title="Bildirimler"
+                  description="Uygulama bildirimlerini al"
+                  left={props => <List.Icon {...props} icon="bell" color={Colors.primary} />}
+                  right={props => (
+                    <Switch
+                      value={notificationsEnabled}
+                      onValueChange={handleNotificationsToggle}
+                      color={Colors.primary}
+                    />
+                  )}
+                />
+                
+                <List.Item
+                  title="Karanlık Tema"
+                  description="Karanlık tema kullan"
+                  left={props => <List.Icon {...props} icon="theme-light-dark" color={Colors.primary} />}
+                  right={props => (
+                    <Switch
+                      value={darkModeEnabled}
+                      onValueChange={handleDarkModeToggle}
+                      color={Colors.primary}
+                    />
+                  )}
+                />
+                
+                <Divider style={styles.divider} />
+                
+                <Button 
+                  mode="outlined" 
+                  onPress={handleClearCache}
+                  style={styles.actionButton}
+                  icon="cached"
+                >
+                  Önbelleği Temizle
+                </Button>
+              </Card.Content>
+            </Card>
+            
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text style={styles.sectionTitle}>Hakkında</Text>
+                
+                <List.Item
+                  title="Uygulama Versiyonu"
+                  description="1.0.0"
+                  left={props => <List.Icon {...props} icon="information" color={Colors.primary} />}
+                />
+                
+                <List.Item
+                  title="Geliştirici"
+                  description="Apartman Site Yönetimi"
+                  left={props => <List.Icon {...props} icon="code-tags" color={Colors.primary} />}
+                />
+              </Card.Content>
+            </Card>
+            
+            <Button 
+              mode="contained" 
+              onPress={handleLogout}
+              style={[styles.actionButton, styles.logoutButton]}
+              icon="logout"
+              buttonColor={Colors.error}
+            >
+              Çıkış Yap
+            </Button>
+          </View>
+        </ScrollView>
+      </View>
+    </AdminPageGuard>
   );
 }
 

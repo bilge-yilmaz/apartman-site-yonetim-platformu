@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
+import AdminPageGuard from '../../components/AdminPageGuard';
 
 // Sakin tipi
 interface Resident {
@@ -17,7 +18,7 @@ interface Resident {
   status: 'ACTIVE' | 'PASSIVE';
 }
 
-export default function ResidentsScreen() {
+export default function AdminResidentsScreen() {
   const [residents, setResidents] = useState<Resident[]>([]);
   const [filteredResidents, setFilteredResidents] = useState<Resident[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -137,101 +138,103 @@ export default function ResidentsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.safeArea} />
-      
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Site Sakinleri</Text>
-      </View>
-      
-      <ScrollView 
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-        }
-      >
-        <View style={styles.content}>
-          <Text style={styles.title}>Site Sakinleri</Text>
-          <Text style={styles.subtitle}>Tüm site sakinlerini görüntüleyin ve yönetin.</Text>
-          
-          <Searchbar
-            placeholder="Ara..."
-            onChangeText={onChangeSearch}
-            value={searchQuery}
-            style={styles.searchBar}
-          />
-          
-          <Card style={styles.card}>
-            <DataTable>
-              <DataTable.Header>
-                <DataTable.Title>AD SOYAD</DataTable.Title>
-                <DataTable.Title>DAİRE</DataTable.Title>
-                <DataTable.Title>TELEFON</DataTable.Title>
-                <DataTable.Title>DURUM</DataTable.Title>
-                <DataTable.Title>İŞLEMLER</DataTable.Title>
-              </DataTable.Header>
-
-              {filteredResidents.map((resident) => (
-                <DataTable.Row key={resident.id}>
-                  <DataTable.Cell>
-                    <View>
-                      <Text style={styles.residentName}>{resident.name}</Text>
-                      <Text style={styles.residentEmail}>{resident.email}</Text>
-                    </View>
-                  </DataTable.Cell>
-                  <DataTable.Cell>{resident.block}-{resident.apartment}</DataTable.Cell>
-                  <DataTable.Cell>{resident.phone}</DataTable.Cell>
-                  <DataTable.Cell>
-                    <Chip 
-                      mode="flat"
-                      style={{
-                        backgroundColor: resident.status === 'ACTIVE' ? Colors.success : Colors.error,
-                      }}
-                      textStyle={{ color: 'white', fontSize: 12 }}
-                    >
-                      {resident.status === 'ACTIVE' ? 'Aktif' : 'Pasif'}
-                    </Chip>
-                  </DataTable.Cell>
-                  <DataTable.Cell>
-                    <View style={styles.actionsContainer}>
-                      <TouchableOpacity onPress={() => openMenu(resident)}>
-                        <Ionicons name="ellipsis-vertical" size={20} color="#666" />
-                      </TouchableOpacity>
-                    </View>
-                  </DataTable.Cell>
-                </DataTable.Row>
-              ))}
-            </DataTable>
-          </Card>
+    <AdminPageGuard>
+      <View style={styles.container}>
+        <View style={styles.safeArea} />
+        
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Site Sakinleri</Text>
         </View>
-      </ScrollView>
-
-      <FAB
-        style={styles.fab}
-        icon="plus"
-        onPress={() => console.log('Yeni sakin ekle')}
-        color="white"
-      />
-
-      {selectedResident && (
-        <Menu
-          visible={menuVisible}
-          onDismiss={closeMenu}
-          anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
+        
+        <ScrollView 
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+          }
         >
-          <Menu.Item 
-            onPress={handleEditResident} 
-            title="Düzenle" 
-            leadingIcon="pencil" 
-          />
-          <Menu.Item 
-            onPress={handleDeleteResident} 
-            title="Sil" 
-            leadingIcon="delete" 
-          />
-        </Menu>
-      )}
-    </View>
+          <View style={styles.content}>
+            <Text style={styles.title}>Site Sakinleri</Text>
+            <Text style={styles.subtitle}>Tüm site sakinlerini görüntüleyin ve yönetin.</Text>
+            
+            <Searchbar
+              placeholder="Ara..."
+              onChangeText={onChangeSearch}
+              value={searchQuery}
+              style={styles.searchBar}
+            />
+            
+            <Card style={styles.card}>
+              <DataTable>
+                <DataTable.Header>
+                  <DataTable.Title>AD SOYAD</DataTable.Title>
+                  <DataTable.Title>DAİRE</DataTable.Title>
+                  <DataTable.Title>TELEFON</DataTable.Title>
+                  <DataTable.Title>DURUM</DataTable.Title>
+                  <DataTable.Title>İŞLEMLER</DataTable.Title>
+                </DataTable.Header>
+
+                {filteredResidents.map((resident) => (
+                  <DataTable.Row key={resident.id}>
+                    <DataTable.Cell>
+                      <View>
+                        <Text style={styles.residentName}>{resident.name}</Text>
+                        <Text style={styles.residentEmail}>{resident.email}</Text>
+                      </View>
+                    </DataTable.Cell>
+                    <DataTable.Cell>{resident.block}-{resident.apartment}</DataTable.Cell>
+                    <DataTable.Cell>{resident.phone}</DataTable.Cell>
+                    <DataTable.Cell>
+                      <Chip 
+                        mode="flat"
+                        style={{
+                          backgroundColor: resident.status === 'ACTIVE' ? Colors.success : Colors.error,
+                        }}
+                        textStyle={{ color: 'white', fontSize: 12 }}
+                      >
+                        {resident.status === 'ACTIVE' ? 'Aktif' : 'Pasif'}
+                      </Chip>
+                    </DataTable.Cell>
+                    <DataTable.Cell>
+                      <View style={styles.actionsContainer}>
+                        <TouchableOpacity onPress={() => openMenu(resident)}>
+                          <Ionicons name="ellipsis-vertical" size={20} color="#666" />
+                        </TouchableOpacity>
+                      </View>
+                    </DataTable.Cell>
+                  </DataTable.Row>
+                ))}
+              </DataTable>
+            </Card>
+          </View>
+        </ScrollView>
+
+        <FAB
+          style={styles.fab}
+          icon="plus"
+          onPress={() => console.log('Yeni sakin ekle')}
+          color="white"
+        />
+
+        {selectedResident && (
+          <Menu
+            visible={menuVisible}
+            onDismiss={closeMenu}
+            anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
+          >
+            <Menu.Item 
+              onPress={handleEditResident} 
+              title="Düzenle" 
+              leadingIcon="pencil" 
+            />
+            <Menu.Item 
+              onPress={handleDeleteResident} 
+              title="Sil" 
+              leadingIcon="delete" 
+            />
+          </Menu>
+        )}
+      </View>
+    </AdminPageGuard>
   );
 }
 

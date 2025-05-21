@@ -2,6 +2,7 @@ import axios from 'axios';
 import storage, { User } from './storage';
 import { storeToken as saveTokenToSecureStore, TOKEN_KEY } from '../services/api';
 import * as SecureStore from 'expo-secure-store';
+import { decodeJwtPayload } from './base64';
 
 // API URL - Gerçek uygulamada doğru API URL'sini ortama göre ayarla
 // Android emülatör için 10.0.2.2 IP adresini kullan
@@ -15,7 +16,7 @@ console.log('Auth servisi API URL:', API_URL);
 // JWT token'ını decode etme fonksiyonu
 export const decodeToken = (token: string): User | null => {
   try {
-    console.log('Decode edilecek token:', token);
+    console.log('Token decode ediliyor...');
     
     // Token formatını kontrol et
     if (!token || !token.includes('.')) {
@@ -23,24 +24,35 @@ export const decodeToken = (token: string): User | null => {
       return null;
     }
     
-    // Token'da JSON string'i doğrudan kullanıyoruz
-    const parts = token.split('.');
-    if (parts.length < 2) {
-      console.error('Token parçaları eksik');
+    // Yeni hazır yardımcı fonksiyonu kullan
+    const payload = decodeJwtPayload(token);
+    
+    if (!payload) {
+      console.error('Token payload\'ı decode edilemedi');
       return null;
     }
     
-    const jsonPart = parts[1];
-    console.log('JSON kısmı:', jsonPart);
+    console.log('Decode edilen payload:', payload);
     
-    // Kullanıcı bilgilerini doğrudan dön
-    return {
-      id: '680bcbe60bde89bbce1a213e',
-      name: 'Site Yöneticisi',
-      email: 'admin@apartman-site.com',
-      role: 'ADMIN',
-      isActive: true
+    // Payload'da gerekli alanların varlığını kontrol et
+    if (!payload.id || !payload.email) {
+      console.error('Token payload\'ında gerekli alanlar eksik', payload);
+      return null;
+    }
+    
+    // Kullanıcı bilgilerini payload'dan çıkar
+    const user: User = {
+      id: payload.id,
+      name: payload.name || 'İsimsiz Kullanıcı',
+      email: payload.email,
+      role: (payload.role as 'ADMIN' | 'MANAGER' | 'RESIDENT') || 'RESIDENT',
+      isActive: payload.isActive !== undefined ? payload.isActive : true,
+      block: payload.block || null,
+      apartmentNo: payload.apartmentNo || null
     };
+    
+    console.log('Decoded user from token:', user);
+    return user;
   } catch (error) {
     console.error('Token decode error:', error);
     return null;
@@ -56,14 +68,6 @@ export const authService = {
   async login(email: string, password: string): Promise<{ success: boolean; message?: string; token?: string; user?: User }> {
     try {
       console.log(`Giriş denemesi: ${email} - API URL: ${API_URL}/api/auth/login`);
-      
-      // Önce API sağlık kontrolü yap
-      try {
-        const healthResponse = await axios.get(`${API_URL}/api/health-check`);
-        console.log('API sağlık kontrolü başarılı:', healthResponse.status);
-      } catch (healthError) {
-        console.error('API sağlık kontrolü hatası:', healthError);
-      }
       
       // Login isteği gönder
       const response = await axios.post(
@@ -81,31 +85,45 @@ export const authService = {
       
       // Başarılı yanıt kontrolü
       if (response.data && response.data.success && response.data.token) {
-        const userFromApi = response.data.user;
         const tokenFromApi = response.data.token;
-
-        const userData: User = {
-          id: userFromApi.id,
-          name: userFromApi.name,
-          email: userFromApi.email,
-          role: userFromApi.role,
-          isActive: userFromApi.isActive,
-          ...(userFromApi.block && { block: userFromApi.block }),
-          ...(userFromApi.apartmentNo && { apartmentNo: userFromApi.apartmentNo }),
-        };
         
-        await storage.setUser(userData);
-        
+        // Token'ı güvenli depolamaya kaydet
         await SecureStore.setItemAsync(TOKEN_KEY, tokenFromApi);
+        console.log('Token SecureStore\'a kaydedildi');
         
-        console.log('Login successful, token saved to SecureStore.');
+        // Token'dan kullanıcı bilgilerini çıkar
+        const decodedUser = decodeToken(tokenFromApi);
         
-        return { success: true, token: tokenFromApi, user: userData };
+        if (decodedUser) {
+          // API'den dönen kullanıcı bilgileri ile birleştir
+          const userFromApi = response.data.user;
+          const userData: User = {
+            id: userFromApi.id || decodedUser.id,
+            name: userFromApi.name || decodedUser.name,
+            email: userFromApi.email || decodedUser.email,
+            role: userFromApi.role || decodedUser.role,
+            isActive: userFromApi.isActive !== undefined ? userFromApi.isActive : decodedUser.isActive,
+            block: userFromApi.block || decodedUser.block,
+            apartmentNo: userFromApi.apartmentNo || decodedUser.apartmentNo,
+          };
+          
+          // Kullanıcı bilgilerini depola
+          await storage.setUser(userData);
+          console.log('Kullanıcı bilgileri kaydedildi:', userData);
+          
+          return { success: true, token: tokenFromApi, user: userData };
+        } else {
+          console.error('Token decode edilemedi');
+          return { success: false, message: 'Kullanıcı bilgileri alınamadı' };
+        }
       }
       
       return { success: false, message: response.data.error || 'Giriş başarısız' };
     } catch (error) {
       console.error('Login error:', error);
+      
+      // Hata mesajı oluştur
+      let errorMessage = 'Giriş yapılırken bir hata oluştu';
       
       if (axios.isAxiosError(error)) {
         console.error('Axios hatası:', {
@@ -113,16 +131,12 @@ export const authService = {
           status: error.response?.status,
           data: error.response?.data,
         });
-      } else {
-        console.error('Hata detayları:', error instanceof Error ? error.message : 'Detay yok');
-      }
-      
-      let errorMessage = 'Giriş yapılırken bir hata oluştu';
-      
-      if (axios.isAxiosError(error) && error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (axios.isAxiosError(error) && error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+        
+        if (error.response?.data?.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        }
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }

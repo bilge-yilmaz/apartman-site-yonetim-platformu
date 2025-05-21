@@ -9,9 +9,23 @@ import { useAppContext } from '../../utils/appContext';
 
 export default function ProfileScreen() {
   const { user, hydrate, logout, isLoading } = useUserStore();
+  const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
-    hydrate();
+    const loadUserData = async () => {
+      setProfileLoading(true);
+      try {
+        // Her profil sayfası açıldığında kullanıcı bilgilerini yeniden yükle
+        await hydrate();
+        console.log('Profil sayfası için kullanıcı bilgileri güncellendi:', user);
+      } catch (error) {
+        console.error('Profil bilgileri yüklenirken hata:', error);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    loadUserData();
   }, []);
 
   const handleLogout = async () => {
@@ -70,6 +84,22 @@ export default function ProfileScreen() {
           >
             Giriş Yap
           </Button>
+        </View>
+      </View>
+    );
+  }
+
+  if (profileLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.safeArea} />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Profil</Text>
+        </View>
+        
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Profil bilgileri yükleniyor...</Text>
         </View>
       </View>
     );
@@ -333,5 +363,17 @@ const styles = StyleSheet.create({
   loginButton: {
     marginTop: 16,
     width: 200,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  loadingText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 16,
   },
 });

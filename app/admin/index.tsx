@@ -5,6 +5,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
+import AdminPageGuard from '../../components/AdminPageGuard';
 
 export default function AdminDashboard() {
   const [refreshing, setRefreshing] = useState(false);
@@ -51,137 +52,139 @@ export default function AdminDashboard() {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.safeArea} />
-      
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Site Yönetimi</Text>
-      </View>
-      
-      <ScrollView 
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-        }
-      >
-        <View style={styles.welcomeSection}>
-          <Text style={styles.welcomeTitle}>Hoş Geldiniz, Yönetici</Text>
-          <Text style={styles.welcomeSubtitle}>Site yönetim paneline hoş geldiniz.</Text>
+    <AdminPageGuard>
+      <View style={styles.container}>
+        <View style={styles.safeArea} />
+        
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Site Yönetimi</Text>
         </View>
+        
+        <ScrollView 
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+          }
+        >
+          <View style={styles.welcomeSection}>
+            <Text style={styles.welcomeTitle}>Hoş Geldiniz, Yönetici</Text>
+            <Text style={styles.welcomeSubtitle}>Site yönetim paneline hoş geldiniz.</Text>
+          </View>
 
-        {/* Kullanıcı İstatistikleri */}
-        <Card style={styles.card}>
-          <Card.Content>
-            <Title style={styles.cardTitle}>Kullanıcı İstatistikleri</Title>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.users.total}</Text>
-                <Text style={styles.statLabel}>Toplam Kullanıcı</Text>
+          {/* Kullanıcı İstatistikleri */}
+          <Card style={styles.card}>
+            <Card.Content>
+              <Title style={styles.cardTitle}>Kullanıcı İstatistikleri</Title>
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{stats.users.total}</Text>
+                  <Text style={styles.statLabel}>Toplam Kullanıcı</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: Colors.success }]}>{stats.users.active}</Text>
+                  <Text style={styles.statLabel}>Aktif Kullanıcı</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: Colors.error }]}>{stats.users.inactive}</Text>
+                  <Text style={styles.statLabel}>Pasif Kullanıcı</Text>
+                </View>
               </View>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.success }]}>{stats.users.active}</Text>
-                <Text style={styles.statLabel}>Aktif Kullanıcı</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.error }]}>{stats.users.inactive}</Text>
-                <Text style={styles.statLabel}>Pasif Kullanıcı</Text>
-              </View>
-            </View>
-            <Button 
-              mode="outlined" 
-              onPress={() => router.push("../residents")}
-              style={styles.cardButton}
-            >
-              Kullanıcıları Yönet
-            </Button>
-          </Card.Content>
-        </Card>
+              <Button 
+                mode="outlined" 
+                onPress={() => router.push("../residents")}
+                style={styles.cardButton}
+              >
+                Kullanıcıları Yönet
+              </Button>
+            </Card.Content>
+          </Card>
 
-        {/* Aidat İstatistikleri */}
-        <Card style={styles.card}>
-          <Card.Content>
-            <Title style={styles.cardTitle}>Aidat İstatistikleri</Title>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.success }]}>₺{stats.payments.total.toLocaleString()}</Text>
-                <Text style={styles.statLabel}>Toplanan Aidat</Text>
+          {/* Aidat İstatistikleri */}
+          <Card style={styles.card}>
+            <Card.Content>
+              <Title style={styles.cardTitle}>Aidat İstatistikleri</Title>
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: Colors.success }]}>₺{stats.payments.total.toLocaleString()}</Text>
+                  <Text style={styles.statLabel}>Toplanan Aidat</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: Colors.warning }]}>₺{stats.payments.pending.toLocaleString()}</Text>
+                  <Text style={styles.statLabel}>Bekleyen Aidat</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: Colors.error }]}>₺{stats.payments.overdue.toLocaleString()}</Text>
+                  <Text style={styles.statLabel}>Gecikmiş Aidat</Text>
+                </View>
               </View>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.warning }]}>₺{stats.payments.pending.toLocaleString()}</Text>
-                <Text style={styles.statLabel}>Bekleyen Aidat</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.error }]}>₺{stats.payments.overdue.toLocaleString()}</Text>
-                <Text style={styles.statLabel}>Gecikmiş Aidat</Text>
-              </View>
-            </View>
-            <Button 
-              mode="outlined" 
-              onPress={() => router.push("../payments")}
-              style={styles.cardButton}
-            >
-              Aidatları Yönet
-            </Button>
-          </Card.Content>
-        </Card>
+              <Button 
+                mode="outlined" 
+                onPress={() => router.push("../payments")}
+                style={styles.cardButton}
+              >
+                Aidatları Yönet
+              </Button>
+            </Card.Content>
+          </Card>
 
-        {/* Bakım Talepleri */}
-        <Card style={styles.card}>
-          <Card.Content>
-            <Title style={styles.cardTitle}>Bakım Talepleri</Title>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.maintenance.total}</Text>
-                <Text style={styles.statLabel}>Toplam Talep</Text>
+          {/* Bakım Talepleri */}
+          <Card style={styles.card}>
+            <Card.Content>
+              <Title style={styles.cardTitle}>Bakım Talepleri</Title>
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{stats.maintenance.total}</Text>
+                  <Text style={styles.statLabel}>Toplam Talep</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: Colors.warning }]}>{stats.maintenance.pending}</Text>
+                  <Text style={styles.statLabel}>Bekleyen</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: Colors.info }]}>{stats.maintenance.inProgress}</Text>
+                  <Text style={styles.statLabel}>İşlemde</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: Colors.success }]}>{stats.maintenance.completed}</Text>
+                  <Text style={styles.statLabel}>Tamamlanan</Text>
+                </View>
               </View>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.warning }]}>{stats.maintenance.pending}</Text>
-                <Text style={styles.statLabel}>Bekleyen</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.info }]}>{stats.maintenance.inProgress}</Text>
-                <Text style={styles.statLabel}>İşlemde</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.success }]}>{stats.maintenance.completed}</Text>
-                <Text style={styles.statLabel}>Tamamlanan</Text>
-              </View>
-            </View>
-            <Button 
-              mode="outlined" 
-              onPress={() => router.push("../maintenance")}
-              style={styles.cardButton}
-            >
-              Talepleri Yönet
-            </Button>
-          </Card.Content>
-        </Card>
+              <Button 
+                mode="outlined" 
+                onPress={() => router.push("../maintenance")}
+                style={styles.cardButton}
+              >
+                Talepleri Yönet
+              </Button>
+            </Card.Content>
+          </Card>
 
-        {/* Son Duyurular */}
-        <Card style={styles.card}>
-          <Card.Content>
-            <Title style={styles.cardTitle}>Son Duyurular</Title>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.announcements.total}</Text>
-                <Text style={styles.statLabel}>Toplam Duyuru</Text>
+          {/* Son Duyurular */}
+          <Card style={styles.card}>
+            <Card.Content>
+              <Title style={styles.cardTitle}>Son Duyurular</Title>
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{stats.announcements.total}</Text>
+                  <Text style={styles.statLabel}>Toplam Duyuru</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: Colors.success }]}>{stats.announcements.active}</Text>
+                  <Text style={styles.statLabel}>Aktif Duyuru</Text>
+                </View>
               </View>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.success }]}>{stats.announcements.active}</Text>
-                <Text style={styles.statLabel}>Aktif Duyuru</Text>
-              </View>
-            </View>
-            <Button 
-              mode="outlined" 
-              onPress={() => router.push("../announcements")}
-              style={styles.cardButton}
-            >
-              Duyuruları Yönet
-            </Button>
-          </Card.Content>
-        </Card>
-      </ScrollView>
-    </View>
+              <Button 
+                mode="outlined" 
+                onPress={() => router.push("../announcements")}
+                style={styles.cardButton}
+              >
+                Duyuruları Yönet
+              </Button>
+            </Card.Content>
+          </Card>
+        </ScrollView>
+      </View>
+    </AdminPageGuard>
   );
 }
 
