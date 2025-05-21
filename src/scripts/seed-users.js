@@ -37,7 +37,7 @@ const User = mongoose.models.users || mongoose.model('users', UserSchema);
 // Test kullanıcıları
 const testUsers = [
   {
-    email: 'admin@apartman-site.com',
+    email: 'admin@site.com',
     name: 'Site Yöneticisi',
     role: 'ADMIN',
     isActive: true,
@@ -47,7 +47,7 @@ const testUsers = [
     lastLogin: new Date(),
   },
   {
-    email: 'resident@apartman-site.com',
+    email: 'resident@site.com',
     name: 'Ahmet Yılmaz',
     role: 'RESIDENT',
     isActive: true,
@@ -57,7 +57,7 @@ const testUsers = [
     lastLogin: new Date(),
   },
   {
-    email: 'manager@apartman-site.com',
+    email: 'manager@site.com',
     name: 'Mehmet Kaya',
     role: 'MANAGER',
     isActive: true,

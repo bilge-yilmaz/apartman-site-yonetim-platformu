@@ -89,11 +89,11 @@ export default function SignIn() {
         <div className="w-full md:w-2/5 bg-gradient-to-br from-indigo-600 to-purple-600 p-8 md:p-10 flex flex-col justify-between">
           <div className="text-white">
             <div className="flex justify-center mb-8">
-              <Image src="/apartment.svg" alt="Apartman Logo" width={160} height={160} priority />
+              <Image src="/apartment.svg" alt="Site Logo" width={160} height={160} priority />
             </div>
             
             <h2 className="text-2xl font-bold mb-2">{greeting}!</h2>
-            <h1 className="text-3xl font-bold mb-6">Apartman Yönetim Sistemine Hoş Geldiniz</h1>
+            <h1 className="text-3xl font-bold mb-6">Site Yönetim Sistemine Hoş Geldiniz</h1>
             
             <p className="text-indigo-100 mb-8">
               Aidat takibi, bakım bildirimleri ve daha fazlası için giriş yapın.
@@ -102,7 +102,7 @@ export default function SignIn() {
           
           <div className="mt-auto">
             <p className="text-indigo-200 text-sm">
-              &copy; {new Date().getFullYear()} Apartman Site Yönetim Platformu
+              &copy; {new Date().getFullYear()} Site Yönetim Platformu
             </p>
           </div>
         </div>
@@ -208,40 +208,40 @@ export default function SignIn() {
             ) : (
               <div className="mt-6 grid grid-cols-1 gap-3">
                 <div 
-                  onClick={() => handleTestAccountClick('admin@apartman-site.com')}
+                  onClick={() => handleTestAccountClick('admin@site.com')}
                   className="rounded-lg bg-gray-50 p-4 border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-all cursor-pointer"
                 >
                   <div className="flex items-center">
                     <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold mr-3">A</div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">Yönetici</p>
-                      <p className="text-xs text-gray-500">admin@apartman-site.com</p>
+                      <p className="text-xs text-gray-500">admin@site.com</p>
                     </div>
                   </div>
                 </div>
                 
                 <div 
-                  onClick={() => handleTestAccountClick('manager@apartman-site.com')}
+                  onClick={() => handleTestAccountClick('manager@site.com')}
                   className="rounded-lg bg-gray-50 p-4 border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-all cursor-pointer"
                 >
                   <div className="flex items-center">
                     <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-3">M</div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">Yönetici Personeli</p>
-                      <p className="text-xs text-gray-500">manager@apartman-site.com</p>
+                      <p className="text-xs text-gray-500">manager@site.com</p>
                     </div>
                   </div>
                 </div>
                 
                 <div 
-                  onClick={() => handleTestAccountClick('resident@apartman-site.com')}
+                  onClick={() => handleTestAccountClick('resident@site.com')}
                   className="rounded-lg bg-gray-50 p-4 border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-all cursor-pointer"
                 >
                   <div className="flex items-center">
                     <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center text-white font-bold mr-3">R</div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">Site Sakini</p>
-                      <p className="text-xs text-gray-500">resident@apartman-site.com</p>
+                      <p className="text-xs text-gray-500">resident@site.com</p>
                     </div>
                   </div>
                 </div>

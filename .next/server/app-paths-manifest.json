@@ -1,6 +1,7 @@
 {
   "/not-found": "app/not-found.js",
-  "/api/payments/[id]/route": "app/api/payments/[id]/route.js",
-  "/resident/payments/page": "app/resident/payments/page.js",
-  "/resident/payments/[id]/pay/page": "app/resident/payments/[id]/pay/page.js"
+  "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/auth/signin/page": "app/auth/signin/page.js",
+  "/admin/dashboard/page": "app/admin/dashboard/page.js",
+  "/resident/dashboard/page": "app/resident/dashboard/page.js"
 }

@@ -40,7 +40,7 @@ export default function AccountSuspendedPage() {
             Hesabınızın durumu hakkında bilgi almak için lütfen site yönetimiyle iletişime geçin.
           </p>
           <p className="mt-2">
-            İletişim: <a href="mailto:yonetim@apartman-site.com" className="text-blue-600 hover:underline">yonetim@apartman-site.com</a> veya <span className="font-medium">0212 123 45 67</span>
+            İletişim: <a href="mailto:yonetim@site-yonetim.com" className="text-blue-600 hover:underline">yonetim@site-yonetim.com</a> veya <span className="font-medium">0212 123 45 67</span>
           </p>
         </div>
       </div>

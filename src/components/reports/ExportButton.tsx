@@ -77,7 +77,7 @@ export function ExportButton({ data, type }: ExportButtonProps) {
 
     // Başlık
     doc.setFontSize(16)
-    doc.text('Apartman Yönetim Raporu', 20, 20)
+    doc.text('Site Yönetim Raporu', 20, 20)
     doc.setFontSize(12)
     doc.text(`Oluşturulma Tarihi: ${format(new Date(), 'dd MMMM yyyy', { locale: tr })}`, 20, 30)
 

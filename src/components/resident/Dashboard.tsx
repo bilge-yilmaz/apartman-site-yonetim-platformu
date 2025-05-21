@@ -223,7 +223,7 @@ export function ResidentDashboard() {
           <div>
             <Title className="text-white">Hoş Geldiniz!</Title>
             <Text className="mt-2 text-blue-100">
-              Apartman yönetim platformuna hoş geldiniz. Aidat, bakım talepleri, duyurular ve daha fazlasını buradan takip edebilirsiniz.
+              Site yönetim platformuna hoş geldiniz. Aidat, bakım talepleri, duyurular ve daha fazlasını buradan takip edebilirsiniz.
             </Text>
           </div>
           <div className="mt-4 md:mt-0">
