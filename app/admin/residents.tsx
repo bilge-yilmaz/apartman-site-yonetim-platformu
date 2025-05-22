@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
-import { Text, Card, DataTable, Button, FAB, Searchbar, Chip, IconButton, Menu } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native';
+import { Text, Card, DataTable, Button, FAB, Searchbar, Chip, IconButton, Menu, ActivityIndicator } from 'react-native-paper';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
 import AdminPageGuard from '../../components/AdminPageGuard';
+import { apiServices } from '../../utils/api-services';
 
 // Sakin tipi
 interface Resident {
@@ -13,68 +14,23 @@ interface Resident {
   name: string;
   email: string;
   phone: string;
-  apartment: string;
   block: string;
-  status: 'ACTIVE' | 'PASSIVE';
+  apartmentNo: string;
+  role: string;
+  isActive: boolean;
 }
 
 export default function AdminResidentsScreen() {
   const [residents, setResidents] = useState<Resident[]>([]);
   const [filteredResidents, setFilteredResidents] = useState<Resident[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const { user } = useUserStore();
-
-  // Örnek veriler
-  const sampleResidents: Resident[] = [
-    {
-      id: '1',
-      name: 'Ahmet Yılmaz',
-      email: 'ahmet@example.com',
-      phone: '0532 123 4567',
-      apartment: '101',
-      block: 'A',
-      status: 'ACTIVE'
-    },
-    {
-      id: '2',
-      name: 'Ayşe Demir',
-      email: 'ayse@example.com',
-      phone: '0533 234 5678',
-      apartment: '102',
-      block: 'A',
-      status: 'ACTIVE'
-    },
-    {
-      id: '3',
-      name: 'Mehmet Kaya',
-      email: 'mehmet@example.com',
-      phone: '0534 345 6789',
-      apartment: '201',
-      block: 'B',
-      status: 'ACTIVE'
-    },
-    {
-      id: '4',
-      name: 'Fatma Şahin',
-      email: 'fatma@example.com',
-      phone: '0535 456 7890',
-      apartment: '202',
-      block: 'B',
-      status: 'PASSIVE'
-    },
-    {
-      id: '5',
-      name: 'Ali Öztürk',
-      email: 'ali@example.com',
-      phone: '0536 567 8901',
-      apartment: '301',
-      block: 'C',
-      status: 'ACTIVE'
-    }
-  ];
 
   // Yetki kontrolü
   useEffect(() => {
@@ -88,16 +44,25 @@ export default function AdminResidentsScreen() {
     loadResidents();
   }, []);
 
-  const loadResidents = () => {
-    // Gerçek uygulamada API'den veriler çekilir
-    setResidents(sampleResidents);
-    setFilteredResidents(sampleResidents);
+  const loadResidents = async () => {
+    try {
+      setError(null);
+      // API'den sakinleri getir
+      const residentsData = await apiServices.admin.residents.getAll();
+      setResidents(residentsData);
+      setFilteredResidents(residentsData);
+    } catch (err) {
+      console.error('Site sakinleri alınırken hata:', err);
+      setError('Site sakinleri yüklenirken bir hata oluştu.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadResidents();
-    setRefreshing(false);
+    await loadResidents();
   };
 
   const onChangeSearch = (query: string) => {
@@ -109,15 +74,21 @@ export default function AdminResidentsScreen() {
         resident =>
           resident.name.toLowerCase().includes(query.toLowerCase()) ||
           resident.email.toLowerCase().includes(query.toLowerCase()) ||
-          resident.apartment.toLowerCase().includes(query.toLowerCase()) ||
-          resident.block.toLowerCase().includes(query.toLowerCase())
+          resident.apartmentNo?.toLowerCase().includes(query.toLowerCase()) ||
+          resident.block?.toLowerCase().includes(query.toLowerCase())
       );
       setFilteredResidents(filtered);
     }
   };
 
-  const openMenu = (resident: Resident) => {
+  const openMenu = (resident: Resident, event: any) => {
+    // Menu pozisyonu için event.nativeEvent.pageX ve pageY kullanılabilir
+    // Ancak bu örnek için basit bir pozisyon kullanıyoruz
     setSelectedResident(resident);
+    setMenuPosition({
+      x: event.nativeEvent ? event.nativeEvent.pageX - 100 : 0,
+      y: event.nativeEvent ? event.nativeEvent.pageY : 0
+    });
     setMenuVisible(true);
   };
 
@@ -129,12 +100,44 @@ export default function AdminResidentsScreen() {
     closeMenu();
     // Düzenleme sayfasına yönlendirme yapılacak
     console.log('Düzenle:', selectedResident);
+    Alert.alert('Bilgi', 'Düzenleme işlevi yakında eklenecek.');
   };
 
-  const handleDeleteResident = () => {
+  const handleToggleStatus = async () => {
+    if (!selectedResident) return;
+    
     closeMenu();
-    // Silme işlemi yapılacak
-    console.log('Sil:', selectedResident);
+    try {
+      const result = await apiServices.admin.residents.toggleActiveStatus(selectedResident.id);
+      
+      if (result.success) {
+        // Statüsü değişen kullanıcıyı güncelle
+        const updatedResidents = residents.map(r => 
+          r.id === selectedResident.id 
+            ? { ...r, isActive: !r.isActive } 
+            : r
+        );
+        
+        setResidents(updatedResidents);
+        setFilteredResidents(
+          searchQuery.trim() === '' 
+            ? updatedResidents 
+            : updatedResidents.filter(
+                r => r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                     r.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                     r.apartmentNo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                     r.block?.toLowerCase().includes(searchQuery.toLowerCase())
+              )
+        );
+        
+        Alert.alert('Başarılı', `Kullanıcı durumu ${!selectedResident.isActive ? 'aktif' : 'pasif'} olarak değiştirildi.`);
+      } else {
+        Alert.alert('Hata', result.message || 'Kullanıcı durumu değiştirilemedi.');
+      }
+    } catch (error) {
+      console.error('Statü değiştirme hatası:', error);
+      Alert.alert('Hata', 'Kullanıcı durumu değiştirilirken bir hata oluştu.');
+    }
   };
 
   return (
@@ -146,72 +149,104 @@ export default function AdminResidentsScreen() {
           <Text style={styles.headerTitle}>Site Sakinleri</Text>
         </View>
         
-        <ScrollView 
-          style={styles.scrollView}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-          }
-        >
-          <View style={styles.content}>
-            <Text style={styles.title}>Site Sakinleri</Text>
-            <Text style={styles.subtitle}>Tüm site sakinlerini görüntüleyin ve yönetin.</Text>
-            
-            <Searchbar
-              placeholder="Ara..."
-              onChangeText={onChangeSearch}
-              value={searchQuery}
-              style={styles.searchBar}
-            />
-            
-            <Card style={styles.card}>
-              <DataTable>
-                <DataTable.Header>
-                  <DataTable.Title>AD SOYAD</DataTable.Title>
-                  <DataTable.Title>DAİRE</DataTable.Title>
-                  <DataTable.Title>TELEFON</DataTable.Title>
-                  <DataTable.Title>DURUM</DataTable.Title>
-                  <DataTable.Title>İŞLEMLER</DataTable.Title>
-                </DataTable.Header>
-
-                {filteredResidents.map((resident) => (
-                  <DataTable.Row key={resident.id}>
-                    <DataTable.Cell>
-                      <View>
-                        <Text style={styles.residentName}>{resident.name}</Text>
-                        <Text style={styles.residentEmail}>{resident.email}</Text>
-                      </View>
-                    </DataTable.Cell>
-                    <DataTable.Cell>{resident.block}-{resident.apartment}</DataTable.Cell>
-                    <DataTable.Cell>{resident.phone}</DataTable.Cell>
-                    <DataTable.Cell>
-                      <Chip 
-                        mode="flat"
-                        style={{
-                          backgroundColor: resident.status === 'ACTIVE' ? Colors.success : Colors.error,
-                        }}
-                        textStyle={{ color: 'white', fontSize: 12 }}
-                      >
-                        {resident.status === 'ACTIVE' ? 'Aktif' : 'Pasif'}
-                      </Chip>
-                    </DataTable.Cell>
-                    <DataTable.Cell>
-                      <View style={styles.actionsContainer}>
-                        <TouchableOpacity onPress={() => openMenu(resident)}>
-                          <Ionicons name="ellipsis-vertical" size={20} color="#666" />
-                        </TouchableOpacity>
-                      </View>
-                    </DataTable.Cell>
-                  </DataTable.Row>
-                ))}
-              </DataTable>
-            </Card>
+        {loading && !refreshing ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Site sakinleri yükleniyor...</Text>
           </View>
-        </ScrollView>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+            <Button 
+              mode="contained" 
+              onPress={loadResidents}
+              style={styles.retryButton}
+            >
+              Tekrar Dene
+            </Button>
+          </View>
+        ) : (
+          <ScrollView 
+            style={styles.scrollView}
+            refreshControl={
+              <RefreshControl 
+                refreshing={refreshing} 
+                onRefresh={onRefresh} 
+                colors={[Colors.primary]} 
+              />
+            }
+          >
+            <View style={styles.content}>
+              <Text style={styles.title}>Site Sakinleri</Text>
+              <Text style={styles.subtitle}>Tüm site sakinlerini görüntüleyin ve yönetin.</Text>
+              
+              <Searchbar
+                placeholder="Ara..."
+                onChangeText={onChangeSearch}
+                value={searchQuery}
+                style={styles.searchBar}
+              />
+              
+              {filteredResidents.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="people-outline" size={48} color="#999" />
+                  <Text style={styles.emptyText}>
+                    {searchQuery ? 'Aramanıza uygun sakin bulunamadı.' : 'Henüz kayıtlı site sakini bulunmamaktadır.'}
+                  </Text>
+                </View>
+              ) : (
+                <Card style={styles.card}>
+                  <DataTable>
+                    <DataTable.Header>
+                      <DataTable.Title>AD SOYAD</DataTable.Title>
+                      <DataTable.Title>DAİRE</DataTable.Title>
+                      <DataTable.Title>TELEFON</DataTable.Title>
+                      <DataTable.Title>DURUM</DataTable.Title>
+                      <DataTable.Title>İŞLEMLER</DataTable.Title>
+                    </DataTable.Header>
+
+                    {filteredResidents.map((resident) => (
+                      <DataTable.Row key={resident.id}>
+                        <DataTable.Cell>
+                          <View>
+                            <Text style={styles.residentName}>{resident.name}</Text>
+                            <Text style={styles.residentEmail}>{resident.email}</Text>
+                          </View>
+                        </DataTable.Cell>
+                        <DataTable.Cell>{resident.block || '-'}-{resident.apartmentNo || '-'}</DataTable.Cell>
+                        <DataTable.Cell>{resident.phone || '-'}</DataTable.Cell>
+                        <DataTable.Cell>
+                          <Chip 
+                            mode="flat"
+                            style={{
+                              backgroundColor: resident.isActive ? Colors.success : Colors.error,
+                            }}
+                            textStyle={{ color: 'white', fontSize: 12 }}
+                          >
+                            {resident.isActive ? 'Aktif' : 'Pasif'}
+                          </Chip>
+                        </DataTable.Cell>
+                        <DataTable.Cell>
+                          <View style={styles.actionsContainer}>
+                            <TouchableOpacity onPress={(e) => openMenu(resident, e)}>
+                              <Ionicons name="ellipsis-vertical" size={20} color="#666" />
+                            </TouchableOpacity>
+                          </View>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))}
+                  </DataTable>
+                </Card>
+              )}
+            </View>
+          </ScrollView>
+        )}
 
         <FAB
           style={styles.fab}
           icon="plus"
-          onPress={() => console.log('Yeni sakin ekle')}
+          onPress={() => Alert.alert('Bilgi', 'Yeni sakin ekleme işlevi yakında eklenecek.')}
           color="white"
         />
 
@@ -219,7 +254,7 @@ export default function AdminResidentsScreen() {
           <Menu
             visible={menuVisible}
             onDismiss={closeMenu}
-            anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
+            anchor={menuPosition}
           >
             <Menu.Item 
               onPress={handleEditResident} 
@@ -227,9 +262,9 @@ export default function AdminResidentsScreen() {
               leadingIcon="pencil" 
             />
             <Menu.Item 
-              onPress={handleDeleteResident} 
-              title="Sil" 
-              leadingIcon="delete" 
+              onPress={handleToggleStatus} 
+              title={selectedResident.isActive ? "Pasif Yap" : "Aktif Yap"} 
+              leadingIcon={selectedResident.isActive ? "close-circle" : "check-circle"} 
             />
           </Menu>
         )}
@@ -256,6 +291,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+    marginBottom: 8,
   },
   headerTitle: {
     fontSize: 22,
@@ -270,13 +306,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#2c3e50',
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
     color: '#7f8c8d',
-    marginTop: 8,
     marginBottom: 16,
   },
   searchBar: {
@@ -284,14 +320,13 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   card: {
-    marginBottom: 16,
-    borderRadius: 8,
     elevation: 2,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   residentName: {
+    fontWeight: 'bold',
     fontSize: 14,
-    fontWeight: '500',
-    color: '#2c3e50',
   },
   residentEmail: {
     fontSize: 12,
@@ -299,13 +334,53 @@ const styles = StyleSheet.create({
   },
   actionsContainer: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fab: {
     position: 'absolute',
     margin: 16,
     right: 0,
-    bottom: 16,
+    bottom: 0,
     backgroundColor: Colors.primary,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: Colors.primary,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    marginTop: 10,
+    marginBottom: 20,
+    fontSize: 16,
+    color: Colors.error,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 20,
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#7f8c8d',
+    textAlign: 'center',
   },
 }); 

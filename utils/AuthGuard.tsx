@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { router, useSegments, useRootNavigationState } from 'expo-router';
+import { router, useSegments } from 'expo-router';
 import { useUserStore } from '../store/user';
 import Colors from '../constants/Colors';
 
@@ -10,30 +10,40 @@ interface AuthGuardProps {
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const segments = useSegments();
-  const rootNavigationState = useRootNavigationState();
   const { user, hydrate } = useUserStore();
   const [isReady, setIsReady] = useState(false);
 
+  // Initial data loading
   useEffect(() => {
     const checkAuth = async () => {
-      // Hydrate user state from storage
-      await hydrate();
-      setIsReady(true);
+      try {
+        // Hydrate user state from storage
+        await hydrate();
+      } catch (error) {
+        console.error('Error hydrating user state:', error);
+      } finally {
+        setIsReady(true);
+      }
     };
 
     checkAuth();
   }, [hydrate]);
 
+  // Auth and routing logic
   useEffect(() => {
-    if (!rootNavigationState?.key || !isReady) return;
+    // Wait until auth state is ready
+    if (!isReady) return;
+    
+    // Make sure segments exist
+    if (!segments) return;
 
     const inAuthGroup = segments[0] === 'auth';
     const inSplashScreen = !segments[0]; // If undefined or empty
     
-    // Tam URL path'ini oluştur
+    // Full URL path
     const currentPath = '/' + segments.join('/');
     
-    // URL pattern kontrolü
+    // URL pattern checks
     const isAdminRoute = currentPath.startsWith('/admin');
     const isTabsRoute = currentPath.startsWith('/(tabs)');
 
@@ -47,13 +57,14 @@ export function AuthGuard({ children }: AuthGuardProps) {
       isTabsRoute
     });
 
-    // User is not signed in
+    // Authentication and access control logic
     if (!user && !inAuthGroup && !inSplashScreen) {
+      // Not logged in and trying to access protected routes
       console.log('Redirecting to login: User not authenticated');
       router.replace('/auth/login');
     } 
-    // User is signed in but tries to access auth screens
     else if (user && inAuthGroup) {
+      // Logged in but trying to access auth screens
       console.log('Redirecting from auth: User already authenticated');
       
       if (user.role === 'ADMIN') {
@@ -62,21 +73,21 @@ export function AuthGuard({ children }: AuthGuardProps) {
         router.replace('/(tabs)');
       }
     }
-    // User is signed in and accessing protected routes
     else if (user) {
-      // If trying to access admin routes but is not an admin
+      // Logged in and accessing protected routes
+      // Check role permissions
       if (isAdminRoute && user.role !== 'ADMIN') {
         console.log('Redirecting from admin: User is not an admin');
         router.replace('/(tabs)');
       }
-      // If admin is trying to access resident routes
       else if (isTabsRoute && user.role === 'ADMIN') {
         console.log('Redirecting from tabs: Admin should use admin panel');
         router.replace('/admin');
       }
     }
-  }, [segments, user, isReady, rootNavigationState?.key]);
+  }, [segments, user, isReady]);
 
+  // Show loading while initializing
   if (!isReady) {
     return (
       <View style={styles.container}>

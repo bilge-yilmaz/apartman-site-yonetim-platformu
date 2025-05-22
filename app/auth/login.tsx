@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { View, StyleSheet, Image, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
-import { TextInput, Button, Text } from 'react-native-paper';
+import { TextInput, Button, Text, Surface } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useUserStore } from '../../store/user';
 import { loginUser } from '../../services/api';
-import storage from '../../utils/storage';
+import Colors from '../../constants/Colors';
+import { StatusBar } from 'expo-status-bar';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -66,146 +67,202 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.logoContainer}>
-          <Text style={styles.title}>Apartman Yönetim</Text>
-          <Text style={styles.subtitle}>Mobil Uygulaması</Text>
-        </View>
-
-        <View style={styles.formContainer}>
-          <TextInput
-            label="E-posta"
-            value={email}
-            onChangeText={setEmail}
-            mode="outlined"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            style={styles.input}
-          />
-
-          <TextInput
-            label="Şifre"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={secureTextEntry}
-            mode="outlined"
-            style={styles.input}
-            right={
-              <TextInput.Icon
-                icon={secureTextEntry ? 'eye' : 'eye-off'}
-                onPress={() => setSecureTextEntry(!secureTextEntry)}
+    <View style={styles.container}>
+      <StatusBar style="dark" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardContainer}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+          <Surface style={styles.loginCard}>
+            <View style={styles.logoContainer}>
+              <Image 
+                source={require('../../assets/images/apartment.png')} 
+                style={styles.logo} 
+                resizeMode="contain"
               />
-            }
-          />
+              <Text style={styles.title}>Site Yönetim Platformu</Text>
+              <Text style={styles.subtitle}>Giriş Yap</Text>
+            </View>
 
-          <Button
-            mode="contained"
-            onPress={handleLogin}
-            style={styles.button}
-            loading={loading}
-            disabled={loading}
-          >
-            Giriş Yap
-          </Button>
+            {error ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
 
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>veya</Text>
-            <View style={styles.dividerLine} />
-          </View>
+            <View style={styles.formContainer}>
+              <TextInput
+                label="E-posta"
+                value={email}
+                onChangeText={setEmail}
+                mode="outlined"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                style={styles.input}
+                outlineColor={Colors.lightGray}
+                activeOutlineColor={Colors.primary}
+                left={<TextInput.Icon icon="email" color={Colors.primary} />}
+              />
 
-          <Button
-            mode="outlined"
-            icon="google"
-            onPress={handleGoogleLogin}
-            style={styles.googleButton}
-            disabled={loading}
-          >
-            Google ile Giriş Yap
-          </Button>
+              <TextInput
+                label="Şifre"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={secureTextEntry}
+                mode="outlined"
+                style={styles.input}
+                outlineColor={Colors.lightGray}
+                activeOutlineColor={Colors.primary}
+                left={<TextInput.Icon icon="lock" color={Colors.primary} />}
+                right={
+                  <TextInput.Icon
+                    icon={secureTextEntry ? 'eye' : 'eye-off'}
+                    onPress={() => setSecureTextEntry(!secureTextEntry)}
+                    color={Colors.primary}
+                  />
+                }
+              />
 
-          <TouchableOpacity
-            style={styles.registerLink}
-            onPress={() => router.push('/auth/register')}
-          >
-            <Text style={styles.registerText}>
-              Hesabınız yok mu? <Text style={styles.registerTextBold}>Kayıt Olun</Text>
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+              <Button
+                mode="contained"
+                onPress={handleLogin}
+                style={styles.button}
+                contentStyle={styles.buttonContent}
+                loading={loading}
+                disabled={loading}
+                buttonColor={Colors.primary}
+              >
+                Giriş Yap
+              </Button>
+
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>veya</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <Button
+                mode="outlined"
+                icon="google"
+                onPress={handleGoogleLogin}
+                style={styles.googleButton}
+                contentStyle={styles.buttonContent}
+                disabled={loading}
+                textColor={Colors.darkGray}
+                buttonColor={Colors.white}
+              >
+                Google ile Giriş Yap
+              </Button>
+
+              <TouchableOpacity
+                style={styles.registerLink}
+                onPress={() => router.push('/auth/register')}
+              >
+                <Text style={styles.registerText}>
+                  Hesabınız yok mu? <Text style={styles.registerTextBold}>Kayıt Olun</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Surface>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: Colors.background,
+  },
+  keyboardContainer: {
+    flex: 1,
   },
   scrollContainer: {
     flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingVertical: 40,
+  },
+  loginCard: {
+    padding: 24,
+    borderRadius: 12,
+    elevation: 4,
+    backgroundColor: Colors.white,
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: 60,
-    marginBottom: 40,
+    marginBottom: 24,
   },
   logo: {
-    width: 120,
-    height: 120,
+    width: 80,
+    height: 80,
+    marginBottom: 16,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginTop: 10,
+    color: Colors.primary,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 18,
+    color: Colors.darkGray,
+    marginTop: 4,
+  },
+  errorContainer: {
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+    borderRadius: 4,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.error,
+  },
+  errorText: {
+    color: Colors.error,
   },
   formContainer: {
     width: '100%',
   },
   input: {
     marginBottom: 16,
+    backgroundColor: Colors.white,
   },
   button: {
     marginTop: 8,
-    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  buttonContent: {
+    paddingVertical: 8,
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: 24,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: Colors.lightGray,
   },
   dividerText: {
-    marginHorizontal: 10,
-    color: '#666',
+    marginHorizontal: 12,
+    color: Colors.darkGray,
   },
   googleButton: {
-    marginBottom: 20,
+    borderColor: Colors.lightGray,
+    borderRadius: 6,
   },
   registerLink: {
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 24,
   },
   registerText: {
-    color: '#666',
+    color: Colors.darkGray,
   },
   registerTextBold: {
     fontWeight: 'bold',
-    color: '#1976D2',
+    color: Colors.primary,
   },
 });

@@ -187,7 +187,7 @@ export default function AdminSettingsScreen() {
                 
                 <List.Item
                   title="Geliştirici"
-                  description="Apartman Site Yönetimi"
+                  description="Bilge Yılmaz"
                   left={props => <List.Icon {...props} icon="code-tags" color={Colors.primary} />}
                 />
               </Card.Content>

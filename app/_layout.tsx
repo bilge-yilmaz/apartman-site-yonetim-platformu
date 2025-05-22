@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { useColorScheme, View, Text, StyleSheet } from 'react-native';
+import { useColorScheme, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { PaperProvider } from 'react-native-paper';
 import { useFonts } from 'expo-font';
 import { SplashScreen } from 'expo-router';
@@ -11,32 +11,39 @@ import { AuthGuard } from '../utils/AuthGuard';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../constants/Colors';
 
+// Prevent auto hiding splash screen
 SplashScreen.preventAutoHideAsync();
 
+// Create a query client for React Query
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const [showSplash, setShowSplash] = useState(true);
-
+  const [appReady, setAppReady] = useState(false);
+  
+  // Load fonts
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
+  // Handle font loading error
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
+  // Handle app initialization
   useEffect(() => {
     if (loaded) {
+      // Simulate delay for splash screen
       setTimeout(() => {
-        setShowSplash(false);
+        setAppReady(true);
         SplashScreen.hideAsync();
       }, 2000);
     }
   }, [loaded]);
 
-  if (!loaded || showSplash) {
+  // Show splash screen while loading
+  if (!loaded || !appReady) {
     return (
       <View style={styles.splashContainer}>
         <View style={styles.logoContainer}>
@@ -48,12 +55,23 @@ export default function RootLayout() {
     );
   }
 
+  // Main app layout
   return (
     <QueryClientProvider client={queryClient}>
       <PaperProvider theme={colorScheme === 'dark' ? darkTheme : lightTheme}>
         <AppProvider>
           <AuthGuard>
-            <Stack>
+            <Stack screenOptions={{ 
+              headerShown: true,
+              headerTitleStyle: { 
+                color: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text, 
+                fontWeight: '600' 
+              },
+              headerStyle: {
+                backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+              },
+              animation: 'slide_from_right',
+            }}>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="auth/login" options={{ title: 'Giriş Yap' }} />
               <Stack.Screen name="auth/register" options={{ title: 'Kayıt Ol' }} />
