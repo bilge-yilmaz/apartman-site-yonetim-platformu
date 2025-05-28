@@ -1,376 +1,762 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
-import { Text, Card, Button, FAB, Searchbar, Chip, Menu, IconButton } from 'react-native-paper';
-import { router } from 'expo-router';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Colors from '../../constants/Colors';
-import { useUserStore } from '../../store/user';
-import { Announcement } from '../../services/api';
-import AdminPageGuard from '../../components/AdminPageGuard';
+import { AnnouncementStorage, Announcement } from '../../services/offlineStorage';
 
 export default function AdminAnnouncementsScreen() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [filteredAnnouncements, setFilteredAnnouncements] = useState<Announcement[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
-  const { user } = useUserStore();
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+  const [formData, setFormData] = useState<{
+    title: string;
+    content: string;
+    category: 'GENERAL' | 'MAINTENANCE' | 'PAYMENT' | 'EVENT' | 'EMERGENCY';
+    priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+    endDate: string;
+    isActive: boolean;
+  }>({
+    title: '',
+    content: '',
+    category: 'GENERAL',
+    priority: 'MEDIUM',
+    endDate: '',
+    isActive: true,
+  });
 
-  // Örnek veriler
-  const sampleAnnouncements: Announcement[] = [
-    {
-      _id: '1',
-      title: 'Yıllık Aidat Artışı',
-      content: 'Değerli site sakinlerimiz, yönetim kurulu kararıyla 2025 yılı aidat miktarları %10 oranında artırılmıştır. Yeni aidat miktarları Mayıs ayından itibaren geçerli olacaktır.',
-      priority: 'HIGH',
-      createdBy: 'admin',
-      isActive: true,
-      createdAt: '2024-04-20T10:00:00Z',
-      updatedAt: '2024-04-20T10:00:00Z'
-    },
-    {
-      _id: '2',
-      title: 'Havuz Bakımı',
-      content: 'Sitemizin havuzu yaz sezonu için hazırlanacaktır. 5-10 Mayıs tarihleri arasında havuz kullanıma kapalı olacaktır.',
-      priority: 'MEDIUM',
-      createdBy: 'admin',
-      isActive: true,
-      createdAt: '2024-04-18T14:30:00Z',
-      updatedAt: '2024-04-18T14:30:00Z'
-    },
-    {
-      _id: '3',
-      title: 'Asansör Bakımı',
-      content: 'A Blok asansörü 2 Mayıs Cuma günü 09:00-12:00 saatleri arasında bakım nedeniyle kullanılamayacaktır.',
-      priority: 'HIGH',
-      createdBy: 'admin',
-      isActive: true,
-      createdAt: '2024-04-15T09:15:00Z',
-      updatedAt: '2024-04-15T09:15:00Z'
-    },
-    {
-      _id: '4',
-      title: 'Otopark Düzenlemesi',
-      content: 'Otopark alanında yeni düzenleme yapılacaktır. Lütfen araçlarınızı 3 Mayıs saat 08:00\'e kadar belirtilen alanlara çekiniz.',
-      priority: 'MEDIUM',
-      createdBy: 'admin',
-      isActive: true,
-      createdAt: '2024-04-12T16:45:00Z',
-      updatedAt: '2024-04-12T16:45:00Z'
-    },
-    {
-      _id: '5',
-      title: 'Çocuk Parkı Yenileniyor',
-      content: 'Sitemizin çocuk parkı yenilenecektir. Çalışmalar 20-25 Mayıs tarihleri arasında gerçekleştirilecektir.',
-      priority: 'LOW',
-      createdBy: 'admin',
-      isActive: true,
-      createdAt: '2024-04-10T11:20:00Z',
-      updatedAt: '2024-04-10T11:20:00Z'
+  const loadAnnouncements = async () => {
+    try {
+      const data = await AnnouncementStorage.getAll();
+      setAnnouncements(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    } catch (error) {
+      console.error('Duyurular yüklenirken hata:', error);
+      Alert.alert('Hata', 'Duyurular yüklenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  ];
+  };
 
-  // Yetki kontrolü
-  useEffect(() => {
-    if (!user || user.role !== 'ADMIN') {
-      router.replace('/auth/login');
-    }
-  }, [user]);
-
-  // Verileri yükle
   useEffect(() => {
     loadAnnouncements();
   }, []);
 
-  // Filtreleme
-  useEffect(() => {
-    filterAnnouncements();
-  }, [searchQuery, announcements]);
-
-  const loadAnnouncements = () => {
-    // Gerçek uygulamada API'den veriler çekilir
-    setAnnouncements(sampleAnnouncements);
-    setFilteredAnnouncements(sampleAnnouncements);
-  };
-
-  const filterAnnouncements = () => {
-    if (searchQuery.trim() === '') {
-      setFilteredAnnouncements(announcements);
-    } else {
-      const filtered = announcements.filter(
-        announcement =>
-          announcement.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          announcement.content.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredAnnouncements(filtered);
-    }
-  };
-
   const onRefresh = () => {
     setRefreshing(true);
     loadAnnouncements();
-    setRefreshing(false);
   };
 
-  const onChangeSearch = (query: string) => {
-    setSearchQuery(query);
+  const openModal = (announcement?: Announcement) => {
+    if (announcement) {
+      setEditingAnnouncement(announcement);
+      setFormData({
+        title: announcement.title,
+        content: announcement.content,
+        category: announcement.category,
+        priority: announcement.priority,
+        endDate: announcement.endDate ? new Date(announcement.endDate).toISOString().split('T')[0] : '',
+        isActive: announcement.isActive,
+      });
+    } else {
+      setEditingAnnouncement(null);
+      setFormData({
+        title: '',
+        content: '',
+        category: 'GENERAL',
+        priority: 'MEDIUM',
+        endDate: '',
+        isActive: true,
+      });
+    }
+    setModalVisible(true);
   };
 
-  const openMenu = (announcement: Announcement) => {
-    setSelectedAnnouncement(announcement);
-    setMenuVisible(true);
+  const closeModal = () => {
+    setModalVisible(false);
+    setEditingAnnouncement(null);
+    setFormData({
+      title: '',
+      content: '',
+      category: 'GENERAL',
+      priority: 'MEDIUM',
+      endDate: '',
+      isActive: true,
+    });
   };
 
-  const closeMenu = () => {
-    setMenuVisible(false);
-  };
-
-  const handleEditAnnouncement = () => {
-    closeMenu();
-    // Düzenleme sayfasına yönlendirme yapılacak
-    console.log('Düzenle:', selectedAnnouncement);
-  };
-
-  const handleDeleteAnnouncement = () => {
-    closeMenu();
-    // Silme işlemi yapılacak
-    console.log('Sil:', selectedAnnouncement);
-  };
-
-  const getPriorityChip = (priority: Announcement['priority']) => {
-    let color = '';
-    let text = '';
-
-    switch (priority) {
-      case 'URGENT':
-        color = Colors.error;
-        text = 'ACİL';
-        break;
-      case 'HIGH':
-        color = '#FF9800';
-        text = 'ÖNEMLİ';
-        break;
-      case 'MEDIUM':
-        color = Colors.warning;
-        text = 'ORTA';
-        break;
-      case 'LOW':
-        color = Colors.success;
-        text = 'DÜŞÜK';
-        break;
-      default:
-        color = Colors.lightGray;
-        text = 'BİLGİ';
+  const handleSave = async () => {
+    if (!formData.title.trim() || !formData.content.trim()) {
+      Alert.alert('Hata', 'Başlık ve içerik alanları zorunludur');
+      return;
     }
 
-    return (
-      <Chip 
-        mode="flat"
-        style={{
-          backgroundColor: color,
-        }}
-        textStyle={{ color: 'white', fontSize: 12 }}
-      >
-        {text}
-      </Chip>
+    try {
+      const announcementData = {
+        title: formData.title.trim(),
+        content: formData.content.trim(),
+        category: formData.category,
+        priority: formData.priority,
+        startDate: new Date().toISOString(),
+        endDate: formData.endDate ? new Date(formData.endDate).toISOString() : undefined,
+        isActive: formData.isActive,
+      };
+
+      if (editingAnnouncement) {
+        await AnnouncementStorage.update(editingAnnouncement.id, announcementData);
+        Alert.alert('Başarılı', 'Duyuru güncellendi');
+      } else {
+        await AnnouncementStorage.create(announcementData);
+        Alert.alert('Başarılı', 'Duyuru oluşturuldu');
+      }
+
+      closeModal();
+      loadAnnouncements();
+    } catch (error) {
+      console.error('Duyuru kaydedilirken hata:', error);
+      Alert.alert('Hata', 'Duyuru kaydedilirken bir hata oluştu');
+    }
+  };
+
+  const handleDelete = (announcement: Announcement) => {
+    Alert.alert(
+      'Duyuru Sil',
+      `"${announcement.title}" duyurusunu silmek istediğinize emin misiniz?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await AnnouncementStorage.delete(announcement.id);
+              Alert.alert('Başarılı', 'Duyuru silindi');
+              loadAnnouncements();
+            } catch (error) {
+              console.error('Duyuru silinirken hata:', error);
+              Alert.alert('Hata', 'Duyuru silinirken bir hata oluştu');
+            }
+          },
+        },
+      ]
     );
   };
 
-  return (
-    <AdminPageGuard>
-      <View style={styles.container}>
-        <View style={styles.safeArea} />
-        
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Duyurular</Text>
+  const toggleStatus = async (announcement: Announcement) => {
+    try {
+      await AnnouncementStorage.update(announcement.id, {
+        isActive: !announcement.isActive,
+      });
+      loadAnnouncements();
+    } catch (error) {
+      console.error('Duyuru durumu güncellenirken hata:', error);
+      Alert.alert('Hata', 'Duyuru durumu güncellenirken bir hata oluştu');
+    }
+  };
+
+  const getCategoryText = (category: string) => {
+    switch (category) {
+      case 'GENERAL': return 'Genel';
+      case 'MAINTENANCE': return 'Bakım';
+      case 'PAYMENT': return 'Ödeme';
+      case 'EVENT': return 'Etkinlik';
+      case 'EMERGENCY': return 'Acil';
+      default: return category;
+    }
+  };
+
+  const getPriorityText = (priority: string) => {
+    switch (priority) {
+      case 'LOW': return 'Düşük';
+      case 'MEDIUM': return 'Orta';
+      case 'HIGH': return 'Yüksek';
+      case 'URGENT': return 'Acil';
+      default: return priority;
+    }
+  };
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'LOW': return '#10B981';
+      case 'MEDIUM': return '#F59E0B';
+      case 'HIGH': return '#F97316';
+      case 'URGENT': return '#EF4444';
+      default: return '#6B7280';
+    }
+  };
+
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case 'GENERAL': return '#3B82F6';
+      case 'MAINTENANCE': return '#8B5CF6';
+      case 'PAYMENT': return '#10B981';
+      case 'EVENT': return '#F59E0B';
+      case 'EMERGENCY': return '#EF4444';
+      default: return '#6B7280';
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Duyurular yükleniyor...</Text>
         </View>
-        
-        <ScrollView 
-          style={styles.scrollView}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-          }
-        >
-          <View style={styles.content}>
-            <Text style={styles.title}>Duyurular</Text>
-            <Text style={styles.subtitle}>Site duyurularını görüntüleyin ve yönetin.</Text>
-            
-            <Searchbar
-              placeholder="Ara..."
-              onChangeText={onChangeSearch}
-              value={searchQuery}
-              style={styles.searchBar}
-            />
-            
-            {filteredAnnouncements.map((announcement) => (
-              <Card 
-                key={announcement._id} 
-                style={[
-                  styles.card, 
-                  { 
-                    borderLeftWidth: 5,
-                    borderLeftColor: 
-                      announcement.priority === 'URGENT' ? Colors.error :
-                      announcement.priority === 'HIGH' ? '#FF9800' :
-                      announcement.priority === 'MEDIUM' ? Colors.warning : 
-                      Colors.success
-                  }
-                ]}
-              >
-                <Card.Content>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.titleContainer}>
-                      <Text style={styles.cardTitle}>{announcement.title}</Text>
-                      {getPriorityChip(announcement.priority)}
-                    </View>
-                    <IconButton
-                      icon="dots-vertical"
-                      size={20}
-                      onPress={() => openMenu(announcement)}
-                    />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Duyurular</Text>
+        <TouchableOpacity style={styles.addButton} onPress={() => openModal()}>
+          <Ionicons name="add" size={24} color="white" />
+        </TouchableOpacity>
+      </View>
+
+      {/* İstatistikler */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{announcements.length}</Text>
+          <Text style={styles.statLabel}>Toplam</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#10B981' }]}>
+            {announcements.filter(a => a.isActive).length}
+          </Text>
+          <Text style={styles.statLabel}>Aktif</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#EF4444' }]}>
+            {announcements.filter(a => !a.isActive).length}
+          </Text>
+          <Text style={styles.statLabel}>Pasif</Text>
+        </View>
+      </View>
+
+      {/* Duyuru Listesi */}
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {announcements.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="megaphone-outline" size={64} color="#9CA3AF" />
+            <Text style={styles.emptyText}>Henüz duyuru bulunmuyor</Text>
+            <Text style={styles.emptySubtext}>Yeni duyuru eklemek için + butonuna tıklayın</Text>
+          </View>
+        ) : (
+          announcements.map((announcement) => (
+            <View key={announcement.id} style={[
+              styles.announcementCard,
+              !announcement.isActive && styles.inactiveCard
+            ]}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleRow}>
+                  <Text style={styles.cardTitle}>{announcement.title}</Text>
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity
+                      style={[styles.statusButton, announcement.isActive ? styles.activeButton : styles.inactiveButton]}
+                      onPress={() => toggleStatus(announcement)}
+                    >
+                      <Text style={[styles.statusButtonText, announcement.isActive ? styles.activeButtonText : styles.inactiveButtonText]}>
+                        {announcement.isActive ? 'Aktif' : 'Pasif'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.editButton}
+                      onPress={() => openModal(announcement)}
+                    >
+                      <Ionicons name="pencil" size={16} color="#007AFF" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDelete(announcement)}
+                    >
+                      <Ionicons name="trash" size={16} color="#EF4444" />
+                    </TouchableOpacity>
                   </View>
-                  
+                </View>
+                <View style={styles.cardMeta}>
+                  <View style={[styles.badge, { backgroundColor: getCategoryColor(announcement.category) }]}>
+                    <Text style={styles.badgeText}>{getCategoryText(announcement.category)}</Text>
+                  </View>
+                  <View style={[styles.badge, { backgroundColor: getPriorityColor(announcement.priority) }]}>
+                    <Text style={styles.badgeText}>{getPriorityText(announcement.priority)}</Text>
+                  </View>
                   <Text style={styles.cardDate}>
                     {new Date(announcement.createdAt).toLocaleDateString('tr-TR')}
                   </Text>
-                  
-                  <Text style={styles.cardContent} numberOfLines={3}>
-                    {announcement.content}
-                  </Text>
-                  
-                  <View style={styles.cardActions}>
-                    <Button 
-                      mode="text" 
-                      onPress={() => console.log('Detay:', announcement._id)}
-                    >
-                      Detaylar
-                    </Button>
-                  </View>
-                </Card.Content>
-              </Card>
-            ))}
-          </View>
-        </ScrollView>
-
-        <FAB
-          style={styles.fab}
-          icon="plus"
-          onPress={() => console.log('Yeni duyuru ekle')}
-          color="white"
-        />
-
-        {selectedAnnouncement && (
-          <Menu
-            visible={menuVisible}
-            onDismiss={closeMenu}
-            anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
-          >
-            <Menu.Item 
-              onPress={handleEditAnnouncement} 
-              title="Düzenle" 
-              leadingIcon="pencil" 
-            />
-            <Menu.Item 
-              onPress={handleDeleteAnnouncement} 
-              title="Sil" 
-              leadingIcon="delete" 
-            />
-          </Menu>
+                </View>
+              </View>
+              <Text style={styles.cardContent}>{announcement.content}</Text>
+              {announcement.endDate && (
+                <Text style={styles.endDate}>
+                  Bitiş: {new Date(announcement.endDate).toLocaleDateString('tr-TR')}
+                </Text>
+              )}
+            </View>
+          ))
         )}
-      </View>
-    </AdminPageGuard>
+      </ScrollView>
+
+      {/* Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {editingAnnouncement ? 'Duyuru Düzenle' : 'Yeni Duyuru'}
+              </Text>
+              <TouchableOpacity onPress={closeModal}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalForm}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Başlık *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formData.title}
+                  onChangeText={(text) => setFormData({ ...formData, title: text })}
+                  placeholder="Duyuru başlığı"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>İçerik *</Text>
+                <TextInput
+                  style={[styles.formInput, styles.textArea]}
+                  value={formData.content}
+                  onChangeText={(text) => setFormData({ ...formData, content: text })}
+                  placeholder="Duyuru içeriği"
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Kategori</Text>
+                  <View style={styles.pickerContainer}>
+                    <TouchableOpacity
+                      style={styles.picker}
+                      onPress={() => {
+                        Alert.alert(
+                          'Kategori Seç',
+                          '',
+                          [
+                            { text: 'Genel', onPress: () => setFormData({ ...formData, category: 'GENERAL' }) },
+                            { text: 'Bakım', onPress: () => setFormData({ ...formData, category: 'MAINTENANCE' }) },
+                            { text: 'Ödeme', onPress: () => setFormData({ ...formData, category: 'PAYMENT' }) },
+                            { text: 'Etkinlik', onPress: () => setFormData({ ...formData, category: 'EVENT' }) },
+                            { text: 'Acil', onPress: () => setFormData({ ...formData, category: 'EMERGENCY' }) },
+                            { text: 'İptal', style: 'cancel' },
+                          ]
+                        );
+                      }}
+                    >
+                      <Text style={styles.pickerText}>{getCategoryText(formData.category)}</Text>
+                      <Ionicons name="chevron-down" size={20} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Öncelik</Text>
+                  <View style={styles.pickerContainer}>
+                    <TouchableOpacity
+                      style={styles.picker}
+                      onPress={() => {
+                        Alert.alert(
+                          'Öncelik Seç',
+                          '',
+                          [
+                            { text: 'Düşük', onPress: () => setFormData({ ...formData, priority: 'LOW' }) },
+                            { text: 'Orta', onPress: () => setFormData({ ...formData, priority: 'MEDIUM' }) },
+                            { text: 'Yüksek', onPress: () => setFormData({ ...formData, priority: 'HIGH' }) },
+                            { text: 'Acil', onPress: () => setFormData({ ...formData, priority: 'URGENT' }) },
+                            { text: 'İptal', style: 'cancel' },
+                          ]
+                        );
+                      }}
+                    >
+                      <Text style={styles.pickerText}>{getPriorityText(formData.priority)}</Text>
+                      <Ionicons name="chevron-down" size={20} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Bitiş Tarihi (İsteğe bağlı)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formData.endDate}
+                  onChangeText={(text) => setFormData({ ...formData, endDate: text })}
+                  placeholder="YYYY-MM-DD"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <TouchableOpacity
+                  style={styles.checkboxContainer}
+                  onPress={() => setFormData({ ...formData, isActive: !formData.isActive })}
+                >
+                  <View style={[styles.checkbox, formData.isActive && styles.checkboxChecked]}>
+                    {formData.isActive && <Ionicons name="checkmark" size={16} color="white" />}
+                  </View>
+                  <Text style={styles.checkboxLabel}>Aktif</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelButton} onPress={closeModal}>
+                <Text style={styles.cancelButtonText}>İptal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+                <Text style={styles.saveButtonText}>
+                  {editingAnnouncement ? 'Güncelle' : 'Kaydet'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#F3F4F6',
   },
-  safeArea: {
-    height: 35,
-    backgroundColor: Colors.white,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
   },
   header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: Colors.white,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.black,
+    color: '#1F2937',
+  },
+  addButton: {
+    backgroundColor: '#007AFF',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    marginBottom: 8,
+  },
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
   },
   scrollView: {
     flex: 1,
+    paddingHorizontal: 20,
   },
-  content: {
-    padding: 16,
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#2c3e50',
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 16,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#7f8c8d',
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
     marginTop: 8,
-    marginBottom: 16,
+    textAlign: 'center',
   },
-  searchBar: {
-    marginBottom: 16,
-    elevation: 2,
+  announcementCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  card: {
-    marginBottom: 16,
-    borderRadius: 8,
-    elevation: 2,
+  inactiveCard: {
+    opacity: 0.6,
   },
   cardHeader: {
+    marginBottom: 12,
+  },
+  cardTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    flex: 1,
+    marginBottom: 8,
   },
   cardTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    marginRight: 8,
-    marginBottom: 8,
+    fontWeight: '600',
+    color: '#1F2937',
     flex: 1,
-  },
-  cardDate: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginBottom: 8,
-  },
-  cardContent: {
-    fontSize: 14,
-    color: '#34495e',
-    lineHeight: 20,
-    marginBottom: 16,
+    marginRight: 12,
   },
   cardActions: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  activeButton: {
+    backgroundColor: '#D1FAE5',
+  },
+  inactiveButton: {
+    backgroundColor: '#FEE2E2',
+  },
+  statusButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  activeButtonText: {
+    color: '#065F46',
+  },
+  inactiveButtonText: {
+    color: '#991B1B',
+  },
+  editButton: {
+    padding: 8,
+    marginRight: 4,
+  },
+  deleteButton: {
+    padding: 8,
+  },
+  cardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'white',
+  },
+  cardDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  cardContent: {
+    fontSize: 14,
+    color: '#4B5563',
+    lineHeight: 20,
+  },
+  endDate: {
+    fontSize: 12,
+    color: '#EF4444',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 16,
-    backgroundColor: Colors.primary,
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  modalForm: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  formRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  formGroupHalf: {
+    flex: 1,
+    marginRight: 8,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    backgroundColor: 'white',
+  },
+  picker: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  pickerText: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    borderRadius: 4,
+    marginRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  checkboxLabel: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginRight: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  saveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginLeft: 8,
+    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: 'white',
   },
 }); 

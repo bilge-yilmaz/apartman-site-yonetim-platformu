@@ -140,6 +140,47 @@ export const apiQueue = {
 
 // API servisleri
 export const apiServices = {
+  // Genel HTTP metodları
+  async get(url: string) {
+    try {
+      const response = await api.get(`/api${url}`);
+      return response.data;
+    } catch (error) {
+      console.error(`GET ${url} hatası:`, error);
+      throw error;
+    }
+  },
+
+  async post(url: string, data?: any) {
+    try {
+      const response = await api.post(`/api${url}`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`POST ${url} hatası:`, error);
+      throw error;
+    }
+  },
+
+  async put(url: string, data?: any) {
+    try {
+      const response = await api.put(`/api${url}`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`PUT ${url} hatası:`, error);
+      throw error;
+    }
+  },
+
+  async delete(url: string) {
+    try {
+      const response = await api.delete(`/api${url}`);
+      return response.data;
+    } catch (error) {
+      console.error(`DELETE ${url} hatası:`, error);
+      throw error;
+    }
+  },
+
   // Aidat servisleri
   payments: {
     async getAll() {
@@ -1405,3 +1446,4 @@ export const apiServices = {
 };
 
 export default api;
+

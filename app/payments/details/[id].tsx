@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, ActivityIndicator, Animated, Dimensions } from 'react-native';
 import { Text, Card, Button, Chip, Divider, Surface, IconButton, Avatar } from 'react-native-paper';
 import { useLocalSearchParams, router } from 'expo-router';
-import { usePaymentsStore, Payment } from '../../../store/payments';
+import { usePaymentsStore } from '../../../store/paymentsStore';
+import { Payment } from '../../../services/api';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,7 +12,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function PaymentDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getPaymentById, payments, isLoading, fetchPayments, makePayment } = usePaymentsStore();
+  const { getPaymentById, payments, isLoading, fetchPayments, markAsPaid } = usePaymentsStore();
   const [payment, setPayment] = useState<Payment | undefined>();
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
@@ -43,8 +44,8 @@ export default function PaymentDetailsScreen() {
       if (existingPayment) {
         setPayment(existingPayment);
       } else {
-        // Yoksa API'den yeniden çek
-        await fetchPayments();
+        // Yoksa API'den yeniden çek (userId gerekli)
+        // await fetchPayments({ userId: 'current-user-id' }); // Bu kısım düzeltilmeli
         setPayment(getPaymentById(id));
       }
     };
@@ -64,7 +65,7 @@ export default function PaymentDetailsScreen() {
           text: 'Ödeme Yap',
           onPress: async () => {
             try {
-              await makePayment(payment._id, 'ONLINE');
+              await markAsPaid(payment._id, 'ONLINE');
               Alert.alert('Başarılı', 'Ödeme işleminiz tamamlandı', [
                 { text: 'Tamam', onPress: () => router.back() }
               ]);
@@ -79,7 +80,7 @@ export default function PaymentDetailsScreen() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'COMPLETED':
+      case 'PAID':
         return '#4CAF50';
       case 'PENDING':
         return '#FFC107';
@@ -92,7 +93,7 @@ export default function PaymentDetailsScreen() {
   
   const getStatusGradient = (status: string) => {
     switch (status) {
-      case 'COMPLETED':
+      case 'PAID':
         return ['#43A047', '#2E7D32'];
       case 'PENDING':
         return ['#FFB300', '#F57F17'];
@@ -105,7 +106,7 @@ export default function PaymentDetailsScreen() {
   
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'COMPLETED':
+      case 'PAID':
         return 'check-circle';
       case 'PENDING':
         return 'clock-outline';
@@ -118,7 +119,7 @@ export default function PaymentDetailsScreen() {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'COMPLETED':
+      case 'PAID':
         return 'Ödendi';
       case 'PENDING':
         return 'Bekliyor';
@@ -241,13 +242,13 @@ export default function PaymentDetailsScreen() {
               <View>
                 <Text style={styles.infoLabel}>Daire</Text>
                 <Text style={styles.infoValue}>
-                  {payment.block}-{payment.apartmentNo}
+                  {payment.apartmentNo || 'N/A'}
                 </Text>
               </View>
             </View>
           </View>
             
-          {payment.status === 'COMPLETED' && payment.paymentDate && (
+          {payment.status === 'PAID' && payment.paymentDate && (
             <>
               <Divider style={styles.infoDivider} />
               <View style={styles.infoRow}>
@@ -304,7 +305,7 @@ export default function PaymentDetailsScreen() {
             </View>
           )}
 
-          {payment.status === 'COMPLETED' && (
+          {payment.status === 'PAID' && (
             <View style={styles.receiptSection}>
               <Surface style={styles.receiptContainer}>
                 <View style={styles.receiptHeader}>

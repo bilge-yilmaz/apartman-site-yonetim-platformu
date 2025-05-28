@@ -77,6 +77,24 @@ export default function AdminTabLayout() {
         }}
       />
       <Tabs.Screen 
+        name="notifications" 
+        options={{
+          title: 'Bildirimler',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen 
+        name="reports" 
+        options={{
+          title: 'AI Raporları',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'analytics' : 'analytics-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen 
         name="settings" 
         options={{
           title: 'Ayarlar',

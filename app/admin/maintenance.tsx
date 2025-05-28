@@ -1,624 +1,900 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
-import { Text, Card, DataTable, Button, FAB, Searchbar, Chip, Menu, SegmentedButtons } from 'react-native-paper';
-import { router } from 'expo-router';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import Colors from '../../constants/Colors';
-import { useUserStore } from '../../store/user';
-import AdminPageGuard from '../../components/AdminPageGuard';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { MaintenanceStorage, MaintenanceRequest } from '../../services/offlineStorage';
 
-// Arıza talebi tipi
-type MaintenanceRequest = {
-  _id: string;
+export default function AdminMaintenanceScreen() {
+  const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingRequest, setEditingRequest] = useState<MaintenanceRequest | null>(null);
+  const [formData, setFormData] = useState<{
+    apartmentNo: string;
   title: string;
   description: string;
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  apartmentNo: string;
-  block: string;
-  createdBy?: string;
+    category: 'PLUMBING' | 'ELECTRICAL' | 'HVAC' | 'STRUCTURAL' | 'ELEVATOR' | 'OTHER';
   assignedTo?: string;
-  category?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export default function AdminMaintenanceScreen() {
-  const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
-  const [filteredRequests, setFilteredRequests] = useState<MaintenanceRequest[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<MaintenanceRequest | null>(null);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const { user } = useUserStore();
-
-  // Örnek veriler
-  const sampleRequests: MaintenanceRequest[] = [
-    {
-      _id: '1',
-      title: 'Su Borusu Sızıntısı',
-      description: 'Mutfak lavabosunun altından su sızıyor. Acil müdahale gerekiyor.',
-      status: 'PENDING',
-      category: 'PLUMBING',
-      priority: 'HIGH',
-      apartmentNo: '101',
-      block: 'A',
-      createdBy: 'user123',
-      assignedTo: 'technician456',
-      createdAt: new Date('2025-04-25').toISOString(),
-      updatedAt: new Date('2025-04-25').toISOString()
-    },
-    {
-      _id: '2',
-      title: 'Elektrik Kesintisi',
-      description: 'Dairemizde elektrik kesintisi yaşanıyor. Sigorta atıyor.',
-      status: 'IN_PROGRESS',
-      category: 'ELECTRICAL',
-      priority: 'URGENT',
-      apartmentNo: '202',
-      block: 'B',
-      createdBy: 'user789',
-      assignedTo: 'technician456',
-      createdAt: new Date('2025-04-26').toISOString(),
-      updatedAt: new Date('2025-04-26').toISOString()
-    },
-    {
-      _id: '3',
-      title: 'Asansör Arızası',
-      description: 'B blok asansörü çalışmıyor.',
-      status: 'COMPLETED',
-      category: 'ELEVATOR',
-      priority: 'MEDIUM',
+    estimatedCost?: string;
+    actualCost?: string;
+  }>({
       apartmentNo: '',
-      block: 'B',
-      createdBy: 'admin',
-      assignedTo: 'technician789',
-      createdAt: new Date('2025-04-20').toISOString(),
-      updatedAt: new Date('2025-04-22').toISOString()
-    },
-    {
-      _id: '4',
-      title: 'Kapı Kilidi Arızası',
-      description: 'Daire kapısının kilidi düzgün çalışmıyor.',
+    title: '',
+    description: '',
       status: 'PENDING',
-      category: 'GENERAL',
       priority: 'MEDIUM',
-      apartmentNo: '202',
-      block: 'B',
-      createdBy: 'user456',
-      createdAt: new Date('2025-04-27').toISOString(),
-      updatedAt: new Date('2025-04-27').toISOString()
-    },
-    {
-      _id: '5',
-      title: 'Banyo Musluğu Tamiri',
-      description: 'Banyo musluğu su damlatıyor.',
-      status: 'COMPLETED',
-      category: 'PLUMBING',
-      priority: 'LOW',
-      apartmentNo: '301',
-      block: 'C',
-      createdBy: 'user789',
-      assignedTo: 'technician123',
-      createdAt: new Date('2025-04-18').toISOString(),
-      updatedAt: new Date('2025-04-20').toISOString()
-    }
-  ];
+    category: 'OTHER',
+  });
 
-  // Yetki kontrolü
-  useEffect(() => {
-    if (!user || user.role !== 'ADMIN') {
-      router.replace('/auth/login');
+  const loadMaintenanceRequests = async () => {
+    try {
+      const data = await MaintenanceStorage.getAll();
+      setMaintenanceRequests(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    } catch (error) {
+      console.error('Bakım talepleri yüklenirken hata:', error);
+      Alert.alert('Hata', 'Bakım talepleri yüklenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [user]);
+  };
 
-  // Verileri yükle
   useEffect(() => {
-    loadRequests();
+    loadMaintenanceRequests();
   }, []);
-
-  // Filtreleme
-  useEffect(() => {
-    filterRequests();
-  }, [statusFilter, searchQuery, requests]);
-
-  const loadRequests = () => {
-    // Gerçek uygulamada API'den veriler çekilir
-    setRequests(sampleRequests);
-  };
-
-  const filterRequests = () => {
-    let filtered = [...requests];
-    
-    // Status filtreleme
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(request => request.status === statusFilter);
-    }
-    
-    // Arama filtreleme
-    if (searchQuery.trim() !== '') {
-      filtered = filtered.filter(
-        request =>
-          request.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          request.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          request.apartmentNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          request.block.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-    
-    setFilteredRequests(filtered);
-  };
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadRequests();
-    setRefreshing(false);
+    loadMaintenanceRequests();
   };
 
-  const onChangeSearch = (query: string) => {
-    setSearchQuery(query);
+  const openModal = (request?: MaintenanceRequest) => {
+    if (request) {
+      setEditingRequest(request);
+      setFormData({
+        apartmentNo: request.apartmentNo,
+        title: request.title,
+        description: request.description,
+        status: request.status,
+        priority: request.priority,
+        category: request.category,
+        assignedTo: request.assignedTo || '',
+        estimatedCost: request.estimatedCost?.toString() || '',
+        actualCost: request.actualCost?.toString() || '',
+      });
+    } else {
+      setEditingRequest(null);
+      setFormData({
+        apartmentNo: '',
+        title: '',
+        description: '',
+        status: 'PENDING',
+        priority: 'MEDIUM',
+        category: 'OTHER',
+      });
+    }
+    setModalVisible(true);
   };
 
-  const openMenu = (request: MaintenanceRequest) => {
-    setSelectedRequest(request);
-    setMenuVisible(true);
+  const closeModal = () => {
+    setModalVisible(false);
+    setEditingRequest(null);
+    setFormData({
+      apartmentNo: '',
+      title: '',
+      description: '',
+      status: 'PENDING',
+      priority: 'MEDIUM',
+      category: 'OTHER',
+    });
   };
 
-  const closeMenu = () => {
-    setMenuVisible(false);
+  const handleSave = async () => {
+    if (!formData.apartmentNo.trim() || !formData.title.trim() || !formData.description.trim()) {
+      Alert.alert('Hata', 'Daire no, başlık ve açıklama alanları zorunludur');
+      return;
+    }
+
+    try {
+      const requestData = {
+        apartmentNo: formData.apartmentNo.trim(),
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+        status: formData.status,
+        priority: formData.priority,
+        category: formData.category,
+        assignedTo: formData.assignedTo?.trim() || undefined,
+        estimatedCost: formData.estimatedCost ? parseFloat(formData.estimatedCost) : undefined,
+        actualCost: formData.actualCost ? parseFloat(formData.actualCost) : undefined,
+        ...(formData.status === 'IN_PROGRESS' && !editingRequest?.startDate && { startDate: new Date().toISOString() }),
+        ...(formData.status === 'COMPLETED' && !editingRequest?.completionDate && { completionDate: new Date().toISOString() }),
+      };
+
+      if (editingRequest) {
+        await MaintenanceStorage.update(editingRequest.id, requestData);
+        Alert.alert('Başarılı', 'Bakım talebi güncellendi');
+      } else {
+        await MaintenanceStorage.create(requestData);
+        Alert.alert('Başarılı', 'Bakım talebi oluşturuldu');
+      }
+
+      closeModal();
+      loadMaintenanceRequests();
+    } catch (error) {
+      console.error('Bakım talebi kaydedilirken hata:', error);
+      Alert.alert('Hata', 'Bakım talebi kaydedilirken bir hata oluştu');
+    }
   };
 
-  const handleEditRequest = () => {
-    closeMenu();
-    // Düzenleme sayfasına yönlendirme yapılacak
-    console.log('Düzenle:', selectedRequest);
+  const handleDelete = (request: MaintenanceRequest) => {
+    Alert.alert(
+      'Bakım Talebi Sil',
+      `"${request.title}" talebini silmek istediğinize emin misiniz?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await MaintenanceStorage.delete(request.id);
+              Alert.alert('Başarılı', 'Bakım talebi silindi');
+              loadMaintenanceRequests();
+            } catch (error) {
+              console.error('Bakım talebi silinirken hata:', error);
+              Alert.alert('Hata', 'Bakım talebi silinirken bir hata oluştu');
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const handleDeleteRequest = () => {
-    closeMenu();
-    // Silme işlemi yapılacak
-    console.log('Sil:', selectedRequest);
+  const updateStatus = async (request: MaintenanceRequest, newStatus: MaintenanceRequest['status']) => {
+    try {
+      const updateData: any = { status: newStatus };
+      
+      if (newStatus === 'IN_PROGRESS' && !request.startDate) {
+        updateData.startDate = new Date().toISOString();
+      }
+      
+      if (newStatus === 'COMPLETED' && !request.completionDate) {
+        updateData.completionDate = new Date().toISOString();
+      }
+
+      await MaintenanceStorage.update(request.id, updateData);
+      loadMaintenanceRequests();
+      Alert.alert('Başarılı', 'Durum güncellendi');
+    } catch (error) {
+      console.error('Durum güncellenirken hata:', error);
+      Alert.alert('Hata', 'Durum güncellenirken bir hata oluştu');
+    }
   };
 
-  const handleUpdateStatus = (newStatus: MaintenanceRequest['status']) => {
-    closeMenu();
-    // Durum güncelleme işlemi yapılacak
-    console.log('Durum güncelleme:', selectedRequest, newStatus);
-  };
-
-  const getStatusChip = (status: MaintenanceRequest['status']) => {
-    let color = '';
-    let text = '';
-
+  const getStatusText = (status: string) => {
     switch (status) {
-      case 'PENDING':
-        color = Colors.warning;
-        text = 'Bekliyor';
-        break;
-      case 'IN_PROGRESS':
-        color = Colors.info;
-        text = 'İşlemde';
-        break;
-      case 'COMPLETED':
-        color = Colors.success;
-        text = 'Tamamlandı';
-        break;
-      case 'CANCELLED':
-        color = Colors.error;
-        text = 'İptal';
-        break;
-      default:
-        color = Colors.lightGray;
-        text = status;
+      case 'PENDING': return 'Bekliyor';
+      case 'IN_PROGRESS': return 'Devam Ediyor';
+      case 'COMPLETED': return 'Tamamlandı';
+      case 'CANCELLED': return 'İptal Edildi';
+      default: return status;
     }
-
-    return (
-      <Chip 
-        mode="flat"
-        style={{
-          backgroundColor: color,
-        }}
-        textStyle={{ color: 'white', fontSize: 12 }}
-      >
-        {text}
-      </Chip>
-    );
   };
 
-  const getPriorityChip = (priority: MaintenanceRequest['priority']) => {
-    let color = '';
-    let text = '';
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'PENDING': return '#F59E0B';
+      case 'IN_PROGRESS': return '#3B82F6';
+      case 'COMPLETED': return '#10B981';
+      case 'CANCELLED': return '#6B7280';
+      default: return '#6B7280';
+    }
+  };
 
+  const getPriorityText = (priority: string) => {
     switch (priority) {
-      case 'URGENT':
-        color = Colors.error;
-        text = 'Acil';
-        break;
-      case 'HIGH':
-        color = '#FF9800';
-        text = 'Yüksek';
-        break;
-      case 'MEDIUM':
-        color = Colors.warning;
-        text = 'Orta';
-        break;
-      case 'LOW':
-        color = Colors.success;
-        text = 'Düşük';
-        break;
-      default:
-        color = Colors.lightGray;
-        text = priority;
+      case 'LOW': return 'Düşük';
+      case 'MEDIUM': return 'Orta';
+      case 'HIGH': return 'Yüksek';
+      case 'URGENT': return 'Acil';
+      default: return priority;
     }
-
-    return (
-      <Chip 
-        mode="flat"
-        style={{
-          backgroundColor: color,
-        }}
-        textStyle={{ color: 'white', fontSize: 12 }}
-      >
-        {text}
-      </Chip>
-    );
   };
 
-  // Kategori adını Türkçe'ye çevirme
-  const getCategoryText = (category?: string) => {
-    if (!category) return '';
-    
-    switch (category.toUpperCase()) {
-      case 'PLUMBING': return 'Su Tesisatı';
-      case 'ELECTRICAL': return 'Elektrik';
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'LOW': return '#10B981';
+      case 'MEDIUM': return '#F59E0B';
+      case 'HIGH': return '#F97316';
+      case 'URGENT': return '#EF4444';
+      default: return '#6B7280';
+    }
+  };
+
+  const getCategoryText = (category: string) => {
+    switch (category) {
+      case 'PLUMBING': return 'Tesisatçı';
+      case 'ELECTRICAL': return 'Elektrikçi';
+      case 'HVAC': return 'Klima/Isıtma';
+      case 'STRUCTURAL': return 'Yapısal';
       case 'ELEVATOR': return 'Asansör';
-      case 'HEATING': return 'Isıtma';
-      case 'GENERAL': return 'Genel';
+      case 'OTHER': return 'Diğer';
       default: return category;
     }
   };
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'TRY',
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('tr-TR');
+  };
+
   // İstatistikler
-  const totalRequests = requests.length;
-  const pendingRequests = requests.filter(r => r.status === 'PENDING').length;
-  const inProgressRequests = requests.filter(r => r.status === 'IN_PROGRESS').length;
-  const completedRequests = requests.filter(r => r.status === 'COMPLETED').length;
+  const pendingCount = maintenanceRequests.filter(r => r.status === 'PENDING').length;
+  const inProgressCount = maintenanceRequests.filter(r => r.status === 'IN_PROGRESS').length;
+  const completedCount = maintenanceRequests.filter(r => r.status === 'COMPLETED').length;
+  const urgentCount = maintenanceRequests.filter(r => r.priority === 'URGENT').length;
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Bakım talepleri yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <AdminPageGuard>
-      <View style={styles.container}>
-        <View style={styles.safeArea} />
-        
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Bakım Talepleri</Text>
-        </View>
-        
-        <ScrollView 
-          style={styles.scrollView}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-          }
-        >
-          <View style={styles.content}>
-            <Text style={styles.title}>Bakım Talepleri</Text>
-            <Text style={styles.subtitle}>Tüm bakım ve arıza taleplerini görüntüleyin ve yönetin.</Text>
-            
-            {/* Özet Kartları */}
-            <View style={styles.summaryContainer}>
-              <Card style={styles.summaryCard}>
-                <Card.Content>
-                  <Text style={styles.summaryLabel}>Toplam</Text>
-                  <Text style={[styles.summaryValue, { color: Colors.primary }]}>{totalRequests}</Text>
-                </Card.Content>
-              </Card>
-              
-              <Card style={styles.summaryCard}>
-                <Card.Content>
-                  <Text style={styles.summaryLabel}>Bekleyen</Text>
-                  <Text style={[styles.summaryValue, { color: Colors.warning }]}>{pendingRequests}</Text>
-                </Card.Content>
-              </Card>
-              
-              <Card style={styles.summaryCard}>
-                <Card.Content>
-                  <Text style={styles.summaryLabel}>İşlemde</Text>
-                  <Text style={[styles.summaryValue, { color: Colors.info }]}>{inProgressRequests}</Text>
-                </Card.Content>
-              </Card>
-              
-              <Card style={styles.summaryCard}>
-                <Card.Content>
-                  <Text style={styles.summaryLabel}>Tamamlanan</Text>
-                  <Text style={[styles.summaryValue, { color: Colors.success }]}>{completedRequests}</Text>
-                </Card.Content>
-              </Card>
-            </View>
-            
-            {/* Filtreler */}
-            <View style={styles.filterContainer}>
-              <Searchbar
-                placeholder="Ara..."
-                onChangeText={onChangeSearch}
-                value={searchQuery}
-                style={styles.searchBar}
-              />
-              
-              <SegmentedButtons
-                value={statusFilter}
-                onValueChange={setStatusFilter}
-                buttons={[
-                  { value: 'all', label: 'Tümü' },
-                  { value: 'PENDING', label: 'Bekleyen' },
-                  { value: 'IN_PROGRESS', label: 'İşlemde' },
-                  { value: 'COMPLETED', label: 'Tamamlanan' },
-                ]}
-                style={styles.segmentedButtons}
-              />
-            </View>
-            
-            {/* Talepler */}
-            {filteredRequests.map((request) => (
-              <Card 
-                key={request._id} 
-                style={[
-                  styles.card, 
-                  { 
-                    borderLeftWidth: 5,
-                    borderLeftColor: 
-                      request.priority === 'URGENT' ? Colors.error :
-                      request.priority === 'HIGH' ? '#FF9800' :
-                      request.priority === 'MEDIUM' ? Colors.warning : 
-                      Colors.success
-                  }
-                ]}
-              >
-                <Card.Content>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.titleContainer}>
-                      <Text style={styles.cardTitle}>{request.title}</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => openMenu(request)}>
-                      <Ionicons name="ellipsis-vertical" size={20} color="#666" />
+        <TouchableOpacity style={styles.addButton} onPress={() => openModal()}>
+          <Ionicons name="add" size={24} color="white" />
                     </TouchableOpacity>
                   </View>
                   
-                  <View style={styles.chipRow}>
-                    {getStatusChip(request.status)}
-                    {getPriorityChip(request.priority)}
-                    <Chip mode="outlined" style={styles.categoryChip}>
-                      {getCategoryText(request.category)}
-                    </Chip>
+      {/* İstatistikler */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#F59E0B' }]}>{pendingCount}</Text>
+          <Text style={styles.statLabel}>Bekleyen</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#3B82F6' }]}>{inProgressCount}</Text>
+          <Text style={styles.statLabel}>Devam Eden</Text>
                   </View>
-                  
-                  <Text style={styles.cardDescription} numberOfLines={2}>
-                    {request.description}
-                  </Text>
-                  
-                  <View style={styles.cardDetails}>
-                    <View style={styles.detailItem}>
-                      <MaterialIcons name="location-on" size={16} color={Colors.primary} />
-                      <Text style={styles.detailText}>{request.block}-{request.apartmentNo || 'Ortak Alan'}</Text>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#10B981' }]}>{completedCount}</Text>
+          <Text style={styles.statLabel}>Tamamlanan</Text>
                     </View>
-                    
-                    <View style={styles.detailItem}>
-                      <MaterialIcons name="date-range" size={16} color={Colors.primary} />
-                      <Text style={styles.detailText}>
-                        {new Date(request.createdAt).toLocaleDateString('tr-TR')}
-                      </Text>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#EF4444' }]}>{urgentCount}</Text>
+          <Text style={styles.statLabel}>Acil</Text>
                     </View>
                   </View>
                   
-                  <View style={styles.cardActions}>
-                    <Button 
-                      mode="text" 
-                      onPress={() => console.log('Detay:', request._id)}
-                      icon="eye"
-                    >
-                      Detaylar
-                    </Button>
-                    
-                    {request.status === 'PENDING' && (
-                      <Button 
-                        mode="text" 
-                        onPress={() => handleUpdateStatus('IN_PROGRESS')}
-                        icon="play"
-                        textColor={Colors.info}
-                      >
-                        İşleme Al
-                      </Button>
-                    )}
-                    
-                    {request.status === 'IN_PROGRESS' && (
-                      <Button 
-                        mode="text" 
-                        onPress={() => handleUpdateStatus('COMPLETED')}
-                        icon="check"
-                        textColor={Colors.success}
-                      >
-                        Tamamla
-                      </Button>
-                    )}
-                  </View>
-                </Card.Content>
-              </Card>
-            ))}
+      {/* Bakım Talepleri Listesi */}
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {maintenanceRequests.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="construct-outline" size={64} color="#9CA3AF" />
+            <Text style={styles.emptyText}>Henüz bakım talebi bulunmuyor</Text>
+            <Text style={styles.emptySubtext}>Yeni talep eklemek için + butonuna tıklayın</Text>
           </View>
+        ) : (
+          maintenanceRequests.map((request) => (
+            <View key={request.id} style={styles.requestCard}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleRow}>
+                  <Text style={styles.requestTitle}>{request.title}</Text>
+                  <View style={styles.cardActions}>
+                    {request.status === 'PENDING' && (
+                      <TouchableOpacity
+                        style={styles.startButton}
+                        onPress={() => updateStatus(request, 'IN_PROGRESS')}
+                      >
+                        <Ionicons name="play" size={14} color="white" />
+                        <Text style={styles.startButtonText}>Başlat</Text>
+                      </TouchableOpacity>
+                    )}
+                    {request.status === 'IN_PROGRESS' && (
+                      <TouchableOpacity
+                        style={styles.completeButton}
+                        onPress={() => updateStatus(request, 'COMPLETED')}
+                      >
+                        <Ionicons name="checkmark" size={14} color="white" />
+                        <Text style={styles.completeButtonText}>Tamamla</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={styles.editButton}
+                      onPress={() => openModal(request)}
+                    >
+                      <Ionicons name="pencil" size={16} color="#007AFF" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDelete(request)}
+                    >
+                      <Ionicons name="trash" size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={styles.cardMeta}>
+                  <Text style={styles.apartmentNo}>Daire {request.apartmentNo}</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(request.status) }]}>
+                    <Text style={styles.statusText}>{getStatusText(request.status)}</Text>
+                  </View>
+                  <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(request.priority) }]}>
+                    <Text style={styles.priorityText}>{getPriorityText(request.priority)}</Text>
+                  </View>
+                </View>
+              </View>
+              
+              <View style={styles.cardContent}>
+                <Text style={styles.description}>{request.description}</Text>
+                <View style={styles.cardDetails}>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Kategori:</Text>
+                    <Text style={styles.detailValue}>{getCategoryText(request.category)}</Text>
+                  </View>
+                  {request.assignedTo && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Atanan:</Text>
+                      <Text style={styles.detailValue}>{request.assignedTo}</Text>
+                    </View>
+                  )}
+                  {request.estimatedCost && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Tahmini Maliyet:</Text>
+                      <Text style={styles.detailValue}>{formatCurrency(request.estimatedCost)}</Text>
+                    </View>
+                  )}
+                  {request.actualCost && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Gerçek Maliyet:</Text>
+                      <Text style={styles.detailValue}>{formatCurrency(request.actualCost)}</Text>
+                    </View>
+                  )}
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Oluşturulma:</Text>
+                    <Text style={styles.detailValue}>{formatDate(request.createdAt)}</Text>
+                  </View>
+                  {request.startDate && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Başlangıç:</Text>
+                      <Text style={styles.detailValue}>{formatDate(request.startDate)}</Text>
+                    </View>
+                  )}
+                  {request.completionDate && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Tamamlanma:</Text>
+                      <Text style={styles.detailValue}>{formatDate(request.completionDate)}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+          </View>
+          ))
+        )}
         </ScrollView>
 
-        <FAB
-          style={styles.fab}
-          icon="plus"
-          onPress={() => console.log('Yeni talep ekle')}
-          color="white"
-        />
+      {/* Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {editingRequest ? 'Bakım Talebi Düzenle' : 'Yeni Bakım Talebi'}
+              </Text>
+              <TouchableOpacity onPress={closeModal}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
 
-        {selectedRequest && (
-          <Menu
-            visible={menuVisible}
-            onDismiss={closeMenu}
-            anchor={{ x: 0, y: 0 }} // Bu değerler kullanıcı tıklamasına göre güncellenecek
-          >
-            <Menu.Item 
-              onPress={handleEditRequest} 
-              title="Düzenle" 
-              leadingIcon="pencil" 
-            />
-            {selectedRequest.status === 'PENDING' && (
-              <Menu.Item 
-                onPress={() => handleUpdateStatus('IN_PROGRESS')} 
-                title="İşleme Al" 
-                leadingIcon="play" 
-              />
-            )}
-            {selectedRequest.status === 'IN_PROGRESS' && (
-              <Menu.Item 
-                onPress={() => handleUpdateStatus('COMPLETED')} 
-                title="Tamamlandı İşaretle" 
-                leadingIcon="check" 
-              />
-            )}
-            <Menu.Item 
-              onPress={handleDeleteRequest} 
-              title="Sil" 
-              leadingIcon="delete" 
-            />
-          </Menu>
-        )}
+            <ScrollView style={styles.modalForm}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Daire No *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formData.apartmentNo}
+                  onChangeText={(text) => setFormData({ ...formData, apartmentNo: text })}
+                  placeholder="101"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Başlık *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formData.title}
+                  onChangeText={(text) => setFormData({ ...formData, title: text })}
+                  placeholder="Arıza başlığı"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Açıklama *</Text>
+                <TextInput
+                  style={[styles.formInput, styles.textArea]}
+                  value={formData.description}
+                  onChangeText={(text) => setFormData({ ...formData, description: text })}
+                  placeholder="Detaylı açıklama"
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Kategori</Text>
+                  <TouchableOpacity
+                    style={styles.picker}
+                    onPress={() => {
+                      Alert.alert(
+                        'Kategori Seç',
+                        '',
+                        [
+                          { text: 'Tesisatçı', onPress: () => setFormData({ ...formData, category: 'PLUMBING' }) },
+                          { text: 'Elektrikçi', onPress: () => setFormData({ ...formData, category: 'ELECTRICAL' }) },
+                          { text: 'Klima/Isıtma', onPress: () => setFormData({ ...formData, category: 'HVAC' }) },
+                          { text: 'Yapısal', onPress: () => setFormData({ ...formData, category: 'STRUCTURAL' }) },
+                          { text: 'Asansör', onPress: () => setFormData({ ...formData, category: 'ELEVATOR' }) },
+                          { text: 'Diğer', onPress: () => setFormData({ ...formData, category: 'OTHER' }) },
+                          { text: 'İptal', style: 'cancel' },
+                        ]
+                      );
+                    }}
+                  >
+                    <Text style={styles.pickerText}>{getCategoryText(formData.category)}</Text>
+                    <Ionicons name="chevron-down" size={20} color="#666" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Öncelik</Text>
+                  <TouchableOpacity
+                    style={styles.picker}
+                    onPress={() => {
+                      Alert.alert(
+                        'Öncelik Seç',
+                        '',
+                        [
+                          { text: 'Düşük', onPress: () => setFormData({ ...formData, priority: 'LOW' }) },
+                          { text: 'Orta', onPress: () => setFormData({ ...formData, priority: 'MEDIUM' }) },
+                          { text: 'Yüksek', onPress: () => setFormData({ ...formData, priority: 'HIGH' }) },
+                          { text: 'Acil', onPress: () => setFormData({ ...formData, priority: 'URGENT' }) },
+                          { text: 'İptal', style: 'cancel' },
+                        ]
+                      );
+                    }}
+                  >
+                    <Text style={styles.pickerText}>{getPriorityText(formData.priority)}</Text>
+                    <Ionicons name="chevron-down" size={20} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Durum</Text>
+                <TouchableOpacity
+                  style={styles.picker}
+                  onPress={() => {
+                    Alert.alert(
+                      'Durum Seç',
+                      '',
+                      [
+                        { text: 'Bekliyor', onPress: () => setFormData({ ...formData, status: 'PENDING' }) },
+                        { text: 'Devam Ediyor', onPress: () => setFormData({ ...formData, status: 'IN_PROGRESS' }) },
+                        { text: 'Tamamlandı', onPress: () => setFormData({ ...formData, status: 'COMPLETED' }) },
+                        { text: 'İptal Edildi', onPress: () => setFormData({ ...formData, status: 'CANCELLED' }) },
+                        { text: 'İptal', style: 'cancel' },
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.pickerText}>{getStatusText(formData.status)}</Text>
+                  <Ionicons name="chevron-down" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Atanan Kişi</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formData.assignedTo}
+                  onChangeText={(text) => setFormData({ ...formData, assignedTo: text })}
+                  placeholder="Teknisyen adı"
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Tahmini Maliyet (TL)</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formData.estimatedCost}
+                    onChangeText={(text) => setFormData({ ...formData, estimatedCost: text })}
+                    placeholder="0"
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Gerçek Maliyet (TL)</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formData.actualCost}
+                    onChangeText={(text) => setFormData({ ...formData, actualCost: text })}
+                    placeholder="0"
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelButton} onPress={closeModal}>
+                <Text style={styles.cancelButtonText}>İptal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+                <Text style={styles.saveButtonText}>
+                  {editingRequest ? 'Güncelle' : 'Kaydet'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
       </View>
-    </AdminPageGuard>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#F3F4F6',
   },
-  safeArea: {
-    height: 35,
-    backgroundColor: Colors.white,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
   },
   header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: Colors.white,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.black,
+    color: '#1F2937',
+  },
+  addButton: {
+    backgroundColor: '#007AFF',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    marginBottom: 8,
+  },
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
   },
   scrollView: {
     flex: 1,
+    paddingHorizontal: 20,
   },
-  content: {
-    padding: 16,
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#2c3e50',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  summaryContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  summaryCard: {
-    width: '48%',
-    marginBottom: 8,
-    borderRadius: 8,
-    elevation: 2,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginBottom: 4,
-  },
-  summaryValue: {
+  emptyText: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 16,
   },
-  filterContainer: {
-    marginBottom: 16,
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 8,
+    textAlign: 'center',
   },
-  searchBar: {
+  requestCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 12,
-    elevation: 2,
-  },
-  segmentedButtons: {
-    marginBottom: 8,
-  },
-  card: {
-    marginBottom: 16,
-    borderRadius: 8,
-    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   cardHeader: {
+    marginBottom: 12,
+  },
+  cardTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 8,
   },
-  titleContainer: {
+  requestTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
     flex: 1,
+    marginRight: 12,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-  chipRow: {
+  cardActions: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+  startButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  startButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  completeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  completeButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  editButton: {
+    padding: 8,
+    marginRight: 4,
+  },
+  deleteButton: {
+    padding: 8,
+  },
+  cardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 12,
   },
-  categoryChip: {
-    borderColor: Colors.primary,
-  },
-  cardDescription: {
+  apartmentNo: {
     fontSize: 14,
-    color: '#34495e',
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'white',
+  },
+  priorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  priorityText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'white',
+  },
+  cardContent: {
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingTop: 12,
+  },
+  description: {
+    fontSize: 14,
+    color: '#4B5563',
     marginBottom: 12,
     lineHeight: 20,
   },
   cardDetails: {
+    gap: 4,
+  },
+  detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  detailItem: {
-    flexDirection: 'row',
     alignItems: 'center',
   },
-  detailText: {
+  detailLabel: {
     fontSize: 12,
-    color: '#7f8c8d',
-    marginLeft: 4,
+    color: '#6B7280',
   },
-  cardActions: {
-    flexDirection: 'row',
+  detailValue: {
+    fontSize: 12,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 16,
-    backgroundColor: Colors.primary,
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  modalForm: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  formRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  formGroupHalf: {
+    flex: 1,
+    marginRight: 8,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  picker: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'white',
+  },
+  pickerText: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginRight: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  saveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginLeft: 8,
+    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: 'white',
   },
 }); 

@@ -1,348 +1,462 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native';
-import { Text, Card, DataTable, Button, FAB, Searchbar, Chip, IconButton, Menu, ActivityIndicator } from 'react-native-paper';
-import { router } from 'expo-router';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Colors from '../../constants/Colors';
-import { useUserStore } from '../../store/user';
-import AdminPageGuard from '../../components/AdminPageGuard';
-import { apiServices } from '../../utils/api-services';
-
-// Sakin tipi
-interface Resident {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  block: string;
-  apartmentNo: string;
-  role: string;
-  isActive: boolean;
-}
+import { ResidentStorage, Resident } from '../../services/offlineStorage';
 
 export default function AdminResidentsScreen() {
   const [residents, setResidents] = useState<Resident[]>([]);
-  const [filteredResidents, setFilteredResidents] = useState<Resident[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
-  const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
-  const { user } = useUserStore();
-
-  // Yetki kontrolü
-  useEffect(() => {
-    if (!user || user.role !== 'ADMIN') {
-      router.replace('/auth/login');
-    }
-  }, [user]);
-
-  // Verileri yükle
-  useEffect(() => {
-    loadResidents();
-  }, []);
+  const [refreshing, setRefreshing] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingResident, setEditingResident] = useState<Resident | null>(null);
+  const [formData, setFormData] = useState<{
+    name: string;
+    email: string;
+    apartmentNo: string;
+    block: string;
+    phone: string;
+    role: 'ADMIN' | 'RESIDENT';
+    isActive: boolean;
+  }>({
+    name: '',
+    email: '',
+    apartmentNo: '',
+    block: '',
+    phone: '',
+    role: 'RESIDENT',
+    isActive: true,
+  });
 
   const loadResidents = async () => {
     try {
-      setError(null);
-      // API'den sakinleri getir
-      const residentsData = await apiServices.admin.residents.getAll();
-      setResidents(residentsData);
-      setFilteredResidents(residentsData);
-    } catch (err) {
-      console.error('Site sakinleri alınırken hata:', err);
-      setError('Site sakinleri yüklenirken bir hata oluştu.');
+      const data = await ResidentStorage.getAll();
+      setResidents(data.sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (error) {
+      console.error('Sakinler yüklenirken hata:', error);
+      Alert.alert('Hata', 'Sakinler yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const onRefresh = async () => {
+  useEffect(() => {
+    loadResidents();
+  }, []);
+
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadResidents();
+    loadResidents();
   };
 
-  const onChangeSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
-      setFilteredResidents(residents);
+  const openModal = (resident?: Resident) => {
+    if (resident) {
+      setEditingResident(resident);
+      setFormData({
+        name: resident.name,
+        email: resident.email,
+        apartmentNo: resident.apartmentNo || '',
+        block: resident.block || '',
+        phone: resident.phone || '',
+        role: resident.role,
+        isActive: resident.isActive,
+      });
     } else {
-      const filtered = residents.filter(
-        resident =>
-          resident.name.toLowerCase().includes(query.toLowerCase()) ||
-          resident.email.toLowerCase().includes(query.toLowerCase()) ||
-          resident.apartmentNo?.toLowerCase().includes(query.toLowerCase()) ||
-          resident.block?.toLowerCase().includes(query.toLowerCase())
-      );
-      setFilteredResidents(filtered);
+      setEditingResident(null);
+      setFormData({
+        name: '',
+        email: '',
+        apartmentNo: '',
+        block: '',
+        phone: '',
+        role: 'RESIDENT',
+        isActive: true,
+      });
     }
+    setModalVisible(true);
   };
 
-  const openMenu = (resident: Resident, event: any) => {
-    // Menu pozisyonu için event.nativeEvent.pageX ve pageY kullanılabilir
-    // Ancak bu örnek için basit bir pozisyon kullanıyoruz
-    setSelectedResident(resident);
-    setMenuPosition({
-      x: event.nativeEvent ? event.nativeEvent.pageX - 100 : 0,
-      y: event.nativeEvent ? event.nativeEvent.pageY : 0
+  const closeModal = () => {
+    setModalVisible(false);
+    setEditingResident(null);
+    setFormData({
+      name: '',
+      email: '',
+      apartmentNo: '',
+      block: '',
+      phone: '',
+      role: 'RESIDENT',
+      isActive: true,
     });
-    setMenuVisible(true);
   };
 
-  const closeMenu = () => {
-    setMenuVisible(false);
-  };
+  const handleSave = async () => {
+    if (!formData.name.trim() || !formData.email.trim()) {
+      Alert.alert('Hata', 'Ad ve e-posta alanları zorunludur');
+      return;
+    }
 
-  const handleEditResident = () => {
-    closeMenu();
-    // Düzenleme sayfasına yönlendirme yapılacak
-    console.log('Düzenle:', selectedResident);
-    Alert.alert('Bilgi', 'Düzenleme işlevi yakında eklenecek.');
-  };
+    // E-posta formatı kontrolü
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      Alert.alert('Hata', 'Geçerli bir e-posta adresi giriniz');
+      return;
+    }
 
-  const handleToggleStatus = async () => {
-    if (!selectedResident) return;
-    
-    closeMenu();
     try {
-      const result = await apiServices.admin.residents.toggleActiveStatus(selectedResident.id);
-      
-      if (result.success) {
-        // Statüsü değişen kullanıcıyı güncelle
-        const updatedResidents = residents.map(r => 
-          r.id === selectedResident.id 
-            ? { ...r, isActive: !r.isActive } 
-            : r
-        );
-        
-        setResidents(updatedResidents);
-        setFilteredResidents(
-          searchQuery.trim() === '' 
-            ? updatedResidents 
-            : updatedResidents.filter(
-                r => r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                     r.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                     r.apartmentNo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                     r.block?.toLowerCase().includes(searchQuery.toLowerCase())
-              )
-        );
-        
-        Alert.alert('Başarılı', `Kullanıcı durumu ${!selectedResident.isActive ? 'aktif' : 'pasif'} olarak değiştirildi.`);
+      const residentData = {
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        apartmentNo: formData.apartmentNo.trim() || undefined,
+        block: formData.block.trim() || undefined,
+        phone: formData.phone.trim() || undefined,
+        role: formData.role,
+        isActive: formData.isActive,
+      };
+
+      if (editingResident) {
+        await ResidentStorage.update(editingResident.id, residentData);
+        Alert.alert('Başarılı', 'Sakin bilgileri güncellendi');
       } else {
-        Alert.alert('Hata', result.message || 'Kullanıcı durumu değiştirilemedi.');
+        await ResidentStorage.create(residentData);
+        Alert.alert('Başarılı', 'Yeni sakin eklendi');
       }
+
+      closeModal();
+      loadResidents();
     } catch (error) {
-      console.error('Statü değiştirme hatası:', error);
-      Alert.alert('Hata', 'Kullanıcı durumu değiştirilirken bir hata oluştu.');
+      console.error('Sakin kaydedilirken hata:', error);
+      Alert.alert('Hata', 'Sakin kaydedilirken bir hata oluştu');
     }
   };
+
+  const handleDelete = (resident: Resident) => {
+    Alert.alert(
+      'Sakin Sil',
+      `${resident.name} adlı sakini silmek istediğinize emin misiniz?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await ResidentStorage.delete(resident.id);
+              Alert.alert('Başarılı', 'Sakin silindi');
+              loadResidents();
+            } catch (error) {
+              console.error('Sakin silinirken hata:', error);
+              Alert.alert('Hata', 'Sakin silinirken bir hata oluştu');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const toggleStatus = async (resident: Resident) => {
+    try {
+      await ResidentStorage.update(resident.id, {
+        isActive: !resident.isActive,
+      });
+      loadResidents();
+    } catch (error) {
+      console.error('Durum güncellenirken hata:', error);
+      Alert.alert('Hata', 'Durum güncellenirken bir hata oluştu');
+    }
+  };
+
+  const getRoleText = (role: string) => {
+    switch (role) {
+      case 'ADMIN': return 'Yönetici';
+      case 'RESIDENT': return 'Sakin';
+      default: return role;
+    }
+  };
+
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'ADMIN': return '#8B5CF6';
+      case 'RESIDENT': return '#3B82F6';
+      default: return '#6B7280';
+    }
+  };
+
+  // İstatistikler
+  const totalResidents = residents.length;
+  const activeResidents = residents.filter(r => r.isActive).length;
+  const inactiveResidents = residents.filter(r => !r.isActive).length;
+  const adminCount = residents.filter(r => r.role === 'ADMIN').length;
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Sakinler yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <AdminPageGuard>
-      <View style={styles.container}>
-        <View style={styles.safeArea} />
-        
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Site Sakinleri</Text>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Site Sakinleri</Text>
+        <TouchableOpacity style={styles.addButton} onPress={() => openModal()}>
+          <Ionicons name="add" size={24} color="white" />
+        </TouchableOpacity>
+      </View>
+
+      {/* İstatistikler */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{totalResidents}</Text>
+          <Text style={styles.statLabel}>Toplam</Text>
         </View>
-        
-        {loading && !refreshing ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Site sakinleri yükleniyor...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
-            <Text style={styles.errorText}>{error}</Text>
-            <Button 
-              mode="contained" 
-              onPress={loadResidents}
-              style={styles.retryButton}
-            >
-              Tekrar Dene
-            </Button>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#10B981' }]}>{activeResidents}</Text>
+          <Text style={styles.statLabel}>Aktif</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#EF4444' }]}>{inactiveResidents}</Text>
+          <Text style={styles.statLabel}>Pasif</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#8B5CF6' }]}>{adminCount}</Text>
+          <Text style={styles.statLabel}>Yönetici</Text>
+        </View>
+      </View>
+
+      {/* Sakinler Listesi */}
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {residents.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="people-outline" size={64} color="#9CA3AF" />
+            <Text style={styles.emptyText}>Henüz sakin bulunmuyor</Text>
+            <Text style={styles.emptySubtext}>Yeni sakin eklemek için + butonuna tıklayın</Text>
           </View>
         ) : (
-          <ScrollView 
-            style={styles.scrollView}
-            refreshControl={
-              <RefreshControl 
-                refreshing={refreshing} 
-                onRefresh={onRefresh} 
-                colors={[Colors.primary]} 
-              />
-            }
-          >
-            <View style={styles.content}>
-              <Text style={styles.title}>Site Sakinleri</Text>
-              <Text style={styles.subtitle}>Tüm site sakinlerini görüntüleyin ve yönetin.</Text>
-              
-              <Searchbar
-                placeholder="Ara..."
-                onChangeText={onChangeSearch}
-                value={searchQuery}
-                style={styles.searchBar}
-              />
-              
-              {filteredResidents.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="people-outline" size={48} color="#999" />
-                  <Text style={styles.emptyText}>
-                    {searchQuery ? 'Aramanıza uygun sakin bulunamadı.' : 'Henüz kayıtlı site sakini bulunmamaktadır.'}
-                  </Text>
+          residents.map((resident) => (
+            <View key={resident.id} style={[
+              styles.residentCard,
+              !resident.isActive && styles.inactiveCard
+            ]}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleRow}>
+                  <View style={styles.residentInfo}>
+                    <Text style={styles.residentName}>{resident.name}</Text>
+                    <Text style={styles.residentEmail}>{resident.email}</Text>
+                  </View>
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity
+                      style={[styles.statusButton, resident.isActive ? styles.activeButton : styles.inactiveButton]}
+                      onPress={() => toggleStatus(resident)}
+                    >
+                      <Text style={[styles.statusButtonText, resident.isActive ? styles.activeButtonText : styles.inactiveButtonText]}>
+                        {resident.isActive ? 'Aktif' : 'Pasif'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.editButton}
+                      onPress={() => openModal(resident)}
+                    >
+                      <Ionicons name="pencil" size={16} color="#007AFF" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDelete(resident)}
+                    >
+                      <Ionicons name="trash" size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              ) : (
-                <Card style={styles.card}>
-                  <DataTable>
-                    <DataTable.Header>
-                      <DataTable.Title>AD SOYAD</DataTable.Title>
-                      <DataTable.Title>DAİRE</DataTable.Title>
-                      <DataTable.Title>TELEFON</DataTable.Title>
-                      <DataTable.Title>DURUM</DataTable.Title>
-                      <DataTable.Title>İŞLEMLER</DataTable.Title>
-                    </DataTable.Header>
-
-                    {filteredResidents.map((resident) => (
-                      <DataTable.Row key={resident.id}>
-                        <DataTable.Cell>
-                          <View>
-                            <Text style={styles.residentName}>{resident.name}</Text>
-                            <Text style={styles.residentEmail}>{resident.email}</Text>
-                          </View>
-                        </DataTable.Cell>
-                        <DataTable.Cell>{resident.block || '-'}-{resident.apartmentNo || '-'}</DataTable.Cell>
-                        <DataTable.Cell>{resident.phone || '-'}</DataTable.Cell>
-                        <DataTable.Cell>
-                          <Chip 
-                            mode="flat"
-                            style={{
-                              backgroundColor: resident.isActive ? Colors.success : Colors.error,
-                            }}
-                            textStyle={{ color: 'white', fontSize: 12 }}
-                          >
-                            {resident.isActive ? 'Aktif' : 'Pasif'}
-                          </Chip>
-                        </DataTable.Cell>
-                        <DataTable.Cell>
-                          <View style={styles.actionsContainer}>
-                            <TouchableOpacity onPress={(e) => openMenu(resident, e)}>
-                              <Ionicons name="ellipsis-vertical" size={20} color="#666" />
-                            </TouchableOpacity>
-                          </View>
-                        </DataTable.Cell>
-                      </DataTable.Row>
-                    ))}
-                  </DataTable>
-                </Card>
-              )}
+                <View style={styles.cardMeta}>
+                  <View style={[styles.roleBadge, { backgroundColor: getRoleColor(resident.role) }]}>
+                    <Text style={styles.roleText}>{getRoleText(resident.role)}</Text>
+                  </View>
+                  {resident.apartmentNo && (
+                    <Text style={styles.apartmentInfo}>
+                      {resident.block ? `${resident.block}-` : ''}{resident.apartmentNo}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              
+              <View style={styles.cardContent}>
+                <View style={styles.cardDetails}>
+                  {resident.phone && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="call-outline" size={16} color="#6B7280" />
+                      <Text style={styles.detailValue}>{resident.phone}</Text>
+                    </View>
+                  )}
+                  {resident.apartmentNo && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="home-outline" size={16} color="#6B7280" />
+                      <Text style={styles.detailValue}>
+                        Daire {resident.block ? `${resident.block}-` : ''}{resident.apartmentNo}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.detailRow}>
+                    <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                    <Text style={styles.detailValue}>
+                      Kayıt: {new Date(resident.createdAt).toLocaleDateString('tr-TR')}
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </View>
-          </ScrollView>
+          ))
         )}
+      </ScrollView>
 
-        <FAB
-          style={styles.fab}
-          icon="plus"
-          onPress={() => Alert.alert('Bilgi', 'Yeni sakin ekleme işlevi yakında eklenecek.')}
-          color="white"
-        />
+      {/* Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {editingResident ? 'Sakin Düzenle' : 'Yeni Sakin'}
+              </Text>
+              <TouchableOpacity onPress={closeModal}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
 
-        {selectedResident && (
-          <Menu
-            visible={menuVisible}
-            onDismiss={closeMenu}
-            anchor={menuPosition}
-          >
-            <Menu.Item 
-              onPress={handleEditResident} 
-              title="Düzenle" 
-              leadingIcon="pencil" 
-            />
-            <Menu.Item 
-              onPress={handleToggleStatus} 
-              title={selectedResident.isActive ? "Pasif Yap" : "Aktif Yap"} 
-              leadingIcon={selectedResident.isActive ? "close-circle" : "check-circle"} 
-            />
-          </Menu>
-        )}
-      </View>
-    </AdminPageGuard>
+            <ScrollView style={styles.modalForm}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Ad Soyad *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formData.name}
+                  onChangeText={(text) => setFormData({ ...formData, name: text })}
+                  placeholder="Ahmet Yılmaz"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>E-posta *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formData.email}
+                  onChangeText={(text) => setFormData({ ...formData, email: text })}
+                  placeholder="ahmet@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Blok</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formData.block}
+                    onChangeText={(text) => setFormData({ ...formData, block: text })}
+                    placeholder="A"
+                  />
+                </View>
+
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Daire No</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formData.apartmentNo}
+                    onChangeText={(text) => setFormData({ ...formData, apartmentNo: text })}
+                    placeholder="101"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Telefon</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formData.phone}
+                  onChangeText={(text) => setFormData({ ...formData, phone: text })}
+                  placeholder="0532 123 4567"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Rol</Text>
+                <TouchableOpacity
+                  style={styles.picker}
+                  onPress={() => {
+                    Alert.alert(
+                      'Rol Seç',
+                      '',
+                      [
+                        { text: 'Sakin', onPress: () => setFormData({ ...formData, role: 'RESIDENT' }) },
+                        { text: 'Yönetici', onPress: () => setFormData({ ...formData, role: 'ADMIN' }) },
+                        { text: 'İptal', style: 'cancel' },
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.pickerText}>{getRoleText(formData.role)}</Text>
+                  <Ionicons name="chevron-down" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formGroup}>
+                <TouchableOpacity
+                  style={styles.checkboxContainer}
+                  onPress={() => setFormData({ ...formData, isActive: !formData.isActive })}
+                >
+                  <View style={[styles.checkbox, formData.isActive && styles.checkboxChecked]}>
+                    {formData.isActive && <Ionicons name="checkmark" size={16} color="white" />}
+                  </View>
+                  <Text style={styles.checkboxLabel}>Aktif</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelButton} onPress={closeModal}>
+                <Text style={styles.cancelButtonText}>İptal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+                <Text style={styles.saveButtonText}>
+                  {editingResident ? 'Güncelle' : 'Kaydet'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
-  },
-  safeArea: {
-    height: 35,
-    backgroundColor: Colors.white,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: Colors.white,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-    marginBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: Colors.black,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    marginBottom: 16,
-  },
-  searchBar: {
-    marginBottom: 16,
-    elevation: 2,
-  },
-  card: {
-    elevation: 2,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  residentName: {
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  residentEmail: {
-    fontSize: 12,
-    color: '#7f8c8d',
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#F3F4F6',
   },
   loadingContainer: {
     flex: 1,
@@ -350,37 +464,308 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 16,
     fontSize: 16,
-    color: Colors.primary,
+    color: '#666',
   },
-  errorContainer: {
-    flex: 1,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  addButton: {
+    backgroundColor: '#007AFF',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
-  errorText: {
-    marginTop: 10,
-    marginBottom: 20,
-    fontSize: 16,
-    color: Colors.error,
-    textAlign: 'center',
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    marginBottom: 8,
   },
-  retryButton: {
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  scrollView: {
+    flex: 1,
     paddingHorizontal: 20,
   },
   emptyContainer: {
-    padding: 40,
-    alignItems: 'center',
+    flex: 1,
     justifyContent: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: 8,
+    alignItems: 'center',
+    paddingVertical: 60,
   },
   emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#6B7280',
     marginTop: 16,
-    fontSize: 16,
-    color: '#7f8c8d',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 8,
     textAlign: 'center',
+  },
+  residentCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  inactiveCard: {
+    opacity: 0.6,
+  },
+  cardHeader: {
+    marginBottom: 12,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  residentInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  residentName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  residentEmail: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  activeButton: {
+    backgroundColor: '#D1FAE5',
+  },
+  inactiveButton: {
+    backgroundColor: '#FEE2E2',
+  },
+  statusButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  activeButtonText: {
+    color: '#065F46',
+  },
+  inactiveButtonText: {
+    color: '#991B1B',
+  },
+  editButton: {
+    padding: 8,
+    marginRight: 4,
+  },
+  deleteButton: {
+    padding: 8,
+  },
+  cardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  roleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roleText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'white',
+  },
+  apartmentInfo: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  cardContent: {
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingTop: 12,
+  },
+  cardDetails: {
+    gap: 8,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailValue: {
+    fontSize: 14,
+    color: '#4B5563',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  modalForm: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  formRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  formGroupHalf: {
+    flex: 1,
+    marginRight: 8,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  picker: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'white',
+  },
+  pickerText: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    borderRadius: 4,
+    marginRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  checkboxLabel: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginRight: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  saveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginLeft: 8,
+    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: 'white',
   },
 }); 

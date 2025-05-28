@@ -1,28 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native';
-import { Text, Card, DataTable, Button, FAB, Searchbar, Chip, Menu, SegmentedButtons, ActivityIndicator, Modal, Portal, TextInput } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert, Modal } from 'react-native';
+import { Text, Card, DataTable, Button, FAB, Searchbar, Chip, Menu, SegmentedButtons, ActivityIndicator, Portal, Modal as PaperModal, TextInput } from 'react-native-paper';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
 import AdminPageGuard from '../../components/AdminPageGuard';
 import { apiServices } from '../../utils/api-services';
+import { PaymentStorage, Payment as OfflinePayment } from '../../services/offlineStorage';
 
-// Ödeme tipi
-interface Payment {
-  _id: string;
-  userId: string;
+// Ödeme tipi - offlineStorage'dan gelen interface'i genişletiyoruz
+interface Payment extends OfflinePayment {
+  _id?: string;
+  userId?: string;
   residentName?: string;
-  type: string;
-  description: string;
-  amount: number;
-  dueDate: string;
-  status: 'PAID' | 'PENDING' | 'OVERDUE' | 'CANCELLED';
-  paymentDate?: string;
-  paymentMethod?: string;
-  createdAt: string;
-  updatedAt: string;
-  apartmentNo?: string;
+  type?: string;
   block?: string;
 }
 
@@ -38,8 +30,24 @@ export default function AdminPaymentsScreen() {
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD'>('CASH');
   const { user } = useUserStore();
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [formData, setFormData] = useState<{
+    apartmentNo: string;
+    amount: string;
+    dueDate: string;
+    status: 'PENDING' | 'PAID' | 'OVERDUE';
+    paymentMethod?: 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
+    description: string;
+  }>({
+    apartmentNo: '',
+    amount: '',
+    dueDate: '',
+    status: 'PENDING',
+    description: '',
+  });
 
   // Yetki kontrolü
   useEffect(() => {
@@ -60,13 +68,20 @@ export default function AdminPaymentsScreen() {
 
   const loadPayments = async () => {
     try {
-      setError(null);
-      // API'den aidatları getir
-      const paymentsData = await apiServices.admin.payments.getAll();
-      setPayments(paymentsData);
-    } catch (err) {
-      console.error('Aidat verileri alınırken hata:', err);
-      setError('Aidat verileri yüklenirken bir hata oluştu.');
+      const data = await PaymentStorage.getAll();
+      // OfflinePayment'ı Payment'a dönüştür
+      const convertedData: Payment[] = data.map(payment => ({
+        ...payment,
+        _id: payment.id,
+        userId: payment.id,
+        type: 'MONTHLY_FEE',
+        residentName: `Daire ${payment.apartmentNo}`,
+        block: 'A'
+      }));
+      setPayments(convertedData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    } catch (error) {
+      console.error('Ödemeler yüklenirken hata:', error);
+      Alert.alert('Hata', 'Ödemeler yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -85,19 +100,19 @@ export default function AdminPaymentsScreen() {
     if (searchQuery.trim() !== '') {
       filtered = filtered.filter(
         payment =>
-          payment.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          payment.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           payment.amount.toString().includes(searchQuery.toLowerCase()) ||
           payment.residentName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          payment._id.toLowerCase().includes(searchQuery.toLowerCase())
+          payment.id.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
     
     setFilteredPayments(filtered);
   };
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadPayments();
+    loadPayments();
   };
 
   const onChangeSearch = (query: string) => {
@@ -141,17 +156,9 @@ export default function AdminPaymentsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const result = await apiServices.admin.payments.deletePayment(selectedPayment._id);
-              
-              if (result.success) {
-                // Silinen aidatı listeden çıkar
-                const updatedPayments = payments.filter(p => p._id !== selectedPayment._id);
-                setPayments(updatedPayments);
-                
-                Alert.alert('Başarılı', 'Aidat kaydı başarıyla silindi.');
-              } else {
-                Alert.alert('Hata', result.message || 'Aidat kaydı silinemedi.');
-              }
+              await PaymentStorage.delete(selectedPayment.id);
+              Alert.alert('Başarılı', 'Aidat kaydı başarıyla silindi.');
+              loadPayments();
             } catch (error) {
               console.error('Aidat silme hatası:', error);
               Alert.alert('Hata', 'Aidat kaydı silinirken bir hata oluştu.');
@@ -176,27 +183,22 @@ export default function AdminPaymentsScreen() {
         paymentDate: new Date().toISOString()
       };
       
-      const result = await apiServices.admin.payments.markAsPaid(selectedPayment._id, paymentInfo);
+      await PaymentStorage.update(selectedPayment.id, {
+        status: 'PAID',
+        paymentDate: paymentInfo.paymentDate,
+        paymentMethod: paymentInfo.paymentMethod as 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD'
+      });
       
-      if (result.success) {
-        // Ödendi olarak işaretlenen aidatı güncelle
-        const updatedPayments = payments.map(p => 
-          p._id === selectedPayment._id ? result.data : p
-        );
-        
-        setPayments(updatedPayments);
-        setPaymentModalVisible(false);
-        Alert.alert('Başarılı', 'Aidat ödemesi başarıyla kaydedildi.');
-      } else {
-        Alert.alert('Hata', result.message || 'Aidat ödemesi kaydedilemedi.');
-      }
+      Alert.alert('Başarılı', 'Aidat ödemesi başarıyla kaydedildi.');
+      loadPayments();
+      setPaymentModalVisible(false);
     } catch (error) {
       console.error('Ödeme kaydetme hatası:', error);
       Alert.alert('Hata', 'Aidat ödemesi kaydedilirken bir hata oluştu.');
     }
   };
 
-  const getStatusChip = (status: Payment['status']) => {
+  const getStatusChip = (status: 'PENDING' | 'PAID' | 'OVERDUE') => {
     let color = '';
     let text = '';
 
@@ -212,10 +214,6 @@ export default function AdminPaymentsScreen() {
       case 'OVERDUE':
         color = Colors.error;
         text = 'Gecikmiş';
-        break;
-      case 'CANCELLED':
-        color = Colors.lightGray;
-        text = 'İptal';
         break;
       default:
         color = Colors.lightGray;
@@ -246,6 +244,134 @@ export default function AdminPaymentsScreen() {
   const overdueAmount = filteredPayments
     .filter(payment => payment.status === 'OVERDUE')
     .reduce((sum, payment) => sum + payment.amount, 0);
+
+  const openModal = (payment?: Payment) => {
+    if (payment) {
+      setEditingPayment(payment);
+      setFormData({
+        apartmentNo: payment.apartmentNo || '',
+        amount: payment.amount.toString(),
+        dueDate: new Date(payment.dueDate).toISOString().split('T')[0],
+        status: payment.status,
+        paymentMethod: payment.paymentMethod,
+        description: payment.description || '',
+      });
+    } else {
+      setEditingPayment(null);
+      setFormData({
+        apartmentNo: '',
+        amount: '',
+        dueDate: '',
+        status: 'PENDING',
+        description: '',
+      });
+    }
+    setModalVisible(true);
+  };
+
+  const closeModal = () => {
+    setModalVisible(false);
+    setEditingPayment(null);
+    setFormData({
+      apartmentNo: '',
+      amount: '',
+      dueDate: '',
+      status: 'PENDING',
+      description: '',
+    });
+  };
+
+  const handleSave = async () => {
+    if (!formData.apartmentNo.trim() || !formData.amount.trim() || !formData.dueDate) {
+      Alert.alert('Hata', 'Daire no, tutar ve vade tarihi alanları zorunludur');
+      return;
+    }
+
+    const amount = parseFloat(formData.amount);
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Hata', 'Geçerli bir tutar giriniz');
+      return;
+    }
+
+    try {
+      const paymentData = {
+        apartmentNo: formData.apartmentNo.trim(),
+        amount: amount,
+        dueDate: new Date(formData.dueDate).toISOString(),
+        status: formData.status,
+        paymentMethod: formData.paymentMethod,
+        description: formData.description.trim() || `Aidat - ${formData.apartmentNo}`,
+        ...(formData.status === 'PAID' && { paymentDate: new Date().toISOString() }),
+      };
+
+      if (editingPayment) {
+        await PaymentStorage.update(editingPayment.id, paymentData);
+        Alert.alert('Başarılı', 'Ödeme güncellendi');
+      } else {
+        await PaymentStorage.create(paymentData);
+        Alert.alert('Başarılı', 'Ödeme oluşturuldu');
+      }
+
+      closeModal();
+      loadPayments();
+    } catch (error) {
+      console.error('Ödeme kaydedilirken hata:', error);
+      Alert.alert('Hata', 'Ödeme kaydedilirken bir hata oluştu');
+    }
+  };
+
+  const markAsPaidOffline = async (payment: Payment) => {
+    try {
+      await PaymentStorage.update(payment.id, {
+        status: 'PAID',
+        paymentDate: new Date().toISOString(),
+        paymentMethod: 'CASH',
+      });
+      loadPayments();
+      Alert.alert('Başarılı', 'Ödeme alındı olarak işaretlendi');
+    } catch (error) {
+      console.error('Ödeme durumu güncellenirken hata:', error);
+      Alert.alert('Hata', 'Ödeme durumu güncellenirken bir hata oluştu');
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'PENDING': return 'Bekliyor';
+      case 'PAID': return 'Ödendi';
+      case 'OVERDUE': return 'Gecikmiş';
+      default: return status;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'PENDING': return '#F59E0B';
+      case 'PAID': return '#10B981';
+      case 'OVERDUE': return '#EF4444';
+      default: return '#6B7280';
+    }
+  };
+
+  const getPaymentMethodText = (method?: string) => {
+    switch (method) {
+      case 'CASH': return 'Nakit';
+      case 'BANK_TRANSFER': return 'Havale';
+      case 'CREDIT_CARD': return 'Kredi Kartı';
+      default: return '-';
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'TRY',
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('tr-TR');
+  };
 
   return (
     <AdminPageGuard>
@@ -289,28 +415,28 @@ export default function AdminPaymentsScreen() {
                 <Card style={styles.summaryCard}>
                   <Card.Content>
                     <Text style={styles.summaryLabel}>Toplam</Text>
-                    <Text style={[styles.summaryValue, { color: Colors.primary }]}>₺{totalAmount.toLocaleString()}</Text>
+                    <Text style={[styles.summaryValue, { color: Colors.primary }]}>₺{formatCurrency(totalAmount)}</Text>
                   </Card.Content>
                 </Card>
                 
                 <Card style={styles.summaryCard}>
                   <Card.Content>
                     <Text style={styles.summaryLabel}>Ödenen</Text>
-                    <Text style={[styles.summaryValue, { color: Colors.success }]}>₺{paidAmount.toLocaleString()}</Text>
+                    <Text style={[styles.summaryValue, { color: Colors.success }]}>₺{formatCurrency(paidAmount)}</Text>
                   </Card.Content>
                 </Card>
                 
                 <Card style={styles.summaryCard}>
                   <Card.Content>
                     <Text style={styles.summaryLabel}>Bekleyen</Text>
-                    <Text style={[styles.summaryValue, { color: Colors.warning }]}>₺{pendingAmount.toLocaleString()}</Text>
+                    <Text style={[styles.summaryValue, { color: Colors.warning }]}>₺{formatCurrency(pendingAmount)}</Text>
                   </Card.Content>
                 </Card>
                 
                 <Card style={styles.summaryCard}>
                   <Card.Content>
                     <Text style={styles.summaryLabel}>Gecikmiş</Text>
-                    <Text style={[styles.summaryValue, { color: Colors.error }]}>₺{overdueAmount.toLocaleString()}</Text>
+                    <Text style={[styles.summaryValue, { color: Colors.error }]}>₺{formatCurrency(overdueAmount)}</Text>
                   </Card.Content>
                 </Card>
               </View>
@@ -368,8 +494,8 @@ export default function AdminPaymentsScreen() {
                             )}
                           </View>
                         </DataTable.Cell>
-                        <DataTable.Cell numeric>₺{payment.amount.toLocaleString()}</DataTable.Cell>
-                        <DataTable.Cell>{new Date(payment.dueDate).toLocaleDateString('tr-TR')}</DataTable.Cell>
+                        <DataTable.Cell numeric>₺{formatCurrency(payment.amount)}</DataTable.Cell>
+                        <DataTable.Cell>{formatDate(payment.dueDate)}</DataTable.Cell>
                         <DataTable.Cell>{getStatusChip(payment.status)}</DataTable.Cell>
                         <DataTable.Cell>
                           <TouchableOpacity onPress={(e) => openMenu(payment, e)}>
@@ -388,7 +514,7 @@ export default function AdminPaymentsScreen() {
         <FAB
           style={styles.fab}
           icon="plus"
-          onPress={() => Alert.alert('Bilgi', 'Yeni aidat ekleme işlevi yakında eklenecek.')}
+          onPress={() => openModal()}
           color="white"
         />
 
@@ -419,7 +545,7 @@ export default function AdminPaymentsScreen() {
         )}
         
         <Portal>
-          <Modal
+          <PaperModal
             visible={paymentModalVisible}
             onDismiss={() => setPaymentModalVisible(false)}
             contentContainerStyle={styles.modalContainer}
@@ -433,11 +559,11 @@ export default function AdminPaymentsScreen() {
               <Text style={styles.inputLabel}>Ödeme Yöntemi:</Text>
               <SegmentedButtons
                 value={paymentMethod}
-                onValueChange={setPaymentMethod}
+                onValueChange={(value) => setPaymentMethod(value as 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD')}
                 buttons={[
                   { value: 'CASH', label: 'Nakit' },
-                  { value: 'CARD', label: 'Kart' },
                   { value: 'BANK_TRANSFER', label: 'Havale' },
+                  { value: 'CREDIT_CARD', label: 'Kart' },
                 ]}
                 style={styles.paymentMethodButtons}
               />
@@ -459,8 +585,130 @@ export default function AdminPaymentsScreen() {
                 Onayla
               </Button>
             </View>
-          </Modal>
+          </PaperModal>
         </Portal>
+
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={modalVisible}
+          onRequestClose={closeModal}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {editingPayment ? 'Ödeme Düzenle' : 'Yeni Ödeme'}
+                </Text>
+                <TouchableOpacity onPress={closeModal}>
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalForm}>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Daire No *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formData.apartmentNo}
+                    onChangeText={(text) => setFormData({ ...formData, apartmentNo: text })}
+                    placeholder="101"
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Tutar (TL) *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formData.amount}
+                    onChangeText={(text) => setFormData({ ...formData, amount: text })}
+                    placeholder="1200"
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Vade Tarihi *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formData.dueDate}
+                    onChangeText={(text) => setFormData({ ...formData, dueDate: text })}
+                    placeholder="YYYY-MM-DD"
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Açıklama</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formData.description}
+                    onChangeText={(text) => setFormData({ ...formData, description: text })}
+                    placeholder="Aylık aidat"
+                  />
+                </View>
+
+                <View style={styles.formRow}>
+                  <View style={styles.formGroupHalf}>
+                    <Text style={styles.formLabel}>Durum</Text>
+                    <TouchableOpacity
+                      style={styles.picker}
+                      onPress={() => {
+                        Alert.alert(
+                          'Durum Seç',
+                          '',
+                          [
+                            { text: 'Bekliyor', onPress: () => setFormData({ ...formData, status: 'PENDING' }) },
+                            { text: 'Ödendi', onPress: () => setFormData({ ...formData, status: 'PAID' }) },
+                            { text: 'Gecikmiş', onPress: () => setFormData({ ...formData, status: 'OVERDUE' }) },
+                            { text: 'İptal', style: 'cancel' },
+                          ]
+                        );
+                      }}
+                    >
+                      <Text style={styles.pickerText}>{getStatusText(formData.status)}</Text>
+                      <Ionicons name="chevron-down" size={20} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {formData.status === 'PAID' && (
+                    <View style={styles.formGroupHalf}>
+                      <Text style={styles.formLabel}>Ödeme Yöntemi</Text>
+                      <TouchableOpacity
+                        style={styles.picker}
+                        onPress={() => {
+                          Alert.alert(
+                            'Ödeme Yöntemi Seç',
+                            '',
+                            [
+                              { text: 'Nakit', onPress: () => setFormData({ ...formData, paymentMethod: 'CASH' }) },
+                              { text: 'Havale', onPress: () => setFormData({ ...formData, paymentMethod: 'BANK_TRANSFER' }) },
+                              { text: 'Kredi Kartı', onPress: () => setFormData({ ...formData, paymentMethod: 'CREDIT_CARD' }) },
+                              { text: 'İptal', style: 'cancel' },
+                            ]
+                          );
+                        }}
+                      >
+                        <Text style={styles.pickerText}>{getPaymentMethodText(formData.paymentMethod)}</Text>
+                        <Ionicons name="chevron-down" size={20} color="#666" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.cancelButton} onPress={closeModal}>
+                  <Text style={styles.cancelButtonText}>İptal</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+                  <Text style={styles.saveButtonText}>
+                    {editingPayment ? 'Güncelle' : 'Kaydet'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </AdminPageGuard>
   );
@@ -632,5 +880,105 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalForm: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  formRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  formGroupHalf: {
+    flex: 1,
+    marginRight: 8,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  picker: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'white',
+  },
+  pickerText: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginRight: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  saveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginLeft: 8,
+    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: 'white',
   },
 }); 

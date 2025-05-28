@@ -1,17 +1,44 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  TouchableOpacity, 
+  RefreshControl, 
+  Alert, 
+  TextInput,
+  Dimensions,
+  StatusBar
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card, Title, Paragraph, Button, Avatar, Divider, ActivityIndicator, Surface, IconButton } from 'react-native-paper';
+import { 
+  Card, 
+  Title, 
+  Paragraph, 
+  Button, 
+  Avatar, 
+  Divider, 
+  ActivityIndicator, 
+  Surface, 
+  IconButton,
+  Badge
+} from 'react-native-paper';
 import { router, useFocusEffect } from 'expo-router';
 import { useUserStore } from '../../store/user';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
 import { useAnnouncementsStore } from '../../store/announcementsStore';
 import { useMaintenanceStore } from '../../store/maintenance';
+import { useSocket } from '../../hooks/useSocket';
 import { Announcement } from '../../services/api';
 import { MaintenanceRequest } from '../../store/maintenance';
+import { checkNetworkConnection } from '../../services/api';
+
+const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -19,8 +46,12 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isOnline, setIsOnline] = useState(true);
   
-  // Announcement store'u bağla
+  // Socket bağlantısı
+  const { isConnected, error: socketError, notifications, unreadCount } = useSocket();
+  
+  // Store'ları bağla
   const { 
     announcements, 
     fetchAnnouncements, 
@@ -28,7 +59,6 @@ export default function HomeScreen() {
     error: announcementsError 
   } = useAnnouncementsStore();
   
-  // Maintenance store'u bağla
   const { 
     requests: maintenanceRequests, 
     fetchRequests: fetchMaintenanceRequests,
@@ -36,24 +66,40 @@ export default function HomeScreen() {
     error: maintenanceError
   } = useMaintenanceStore();
   
-  // API veya bağlantı hatası göstergesi
+  // Network durumu kontrol
   useEffect(() => {
-    if (announcementsError) {
-      console.warn('Duyuru API hatası:', announcementsError);
-    }
+    const checkConnection = async () => {
+      const connected = await checkNetworkConnection();
+      setIsOnline(connected);
+    };
     
-    if (maintenanceError) {
-      console.warn('Arıza bildirimleri API hatası:', maintenanceError);
+    checkConnection();
+    const interval = setInterval(checkConnection, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Hata göstergesi
+  useEffect(() => {
+    if (announcementsError || maintenanceError || socketError) {
+      console.warn('API Hataları:', { announcementsError, maintenanceError, socketError });
     }
-  }, [announcementsError, maintenanceError]);
+  }, [announcementsError, maintenanceError, socketError]);
   
   // Verileri yükle
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Promise.all kullanarak paralelleştirme
-      await Promise.all([
+      const connected = await checkNetworkConnection();
+      if (!connected) {
+        setIsOnline(false);
+        return;
+      }
+      
+      setIsOnline(true);
+      
+      await Promise.allSettled([
         fetchAnnouncements({ isActive: true }),
         fetchMaintenanceRequests()
       ]);
@@ -65,55 +111,97 @@ export default function HomeScreen() {
     }
   }, [fetchAnnouncements, fetchMaintenanceRequests]);
   
-  // Sayfa yüklenirken verileri getir
   useEffect(() => {
     loadData();
   }, [loadData]);
   
-  // Sayfa focus olduğunda verileri güncelle
   useFocusEffect(
     useCallback(() => {
       loadData();
-      return () => {
-        // Cleanup function
-      };
+      return () => {};
     }, [loadData])
   );
   
-  // Yenileme işlemi
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
   }, [loadData]);
   
-  // Varsayılan seçenekler
-  const featuredServices = [
-    { id: 1, icon: 'megaphone-outline' as const, label: 'Duyurular', route: '/(tabs)/announcements' as const },
-    { id: 2, icon: 'construct-outline' as const, label: 'Arızalar', route: '/(tabs)/maintenance' as const },
-    { id: 3, icon: 'cash-outline' as const, label: 'Ödemeler', route: '/(tabs)/payments' as const },
-    { id: 4, icon: 'calendar-outline' as const, label: 'Rezervasyon', route: '/(tabs)/reservations' as const },
+  // Hızlı erişim servisleri
+  const quickServices = [
+    { 
+      id: 1, 
+      icon: 'megaphone-outline', 
+      label: 'Duyurular', 
+      route: '/(tabs)/announcements',
+      color: Colors.primary,
+      count: announcements?.length || 0
+    },
+    { 
+      id: 2, 
+      icon: 'construct-outline', 
+      label: 'Bakım', 
+      route: '/(tabs)/maintenance',
+      color: '#f59e0b',
+      count: maintenanceRequests?.filter(req => req.status === 'PENDING').length || 0
+    },
+    { 
+      id: 3, 
+      icon: 'cash-outline', 
+      label: 'Ödemeler', 
+      route: '/(tabs)/payments',
+      color: '#10b981',
+      count: 0
+    },
+    { 
+      id: 4, 
+      icon: 'calendar-outline', 
+      label: 'Rezervasyon', 
+      route: '/(tabs)/reservations',
+      color: '#8b5cf6',
+      count: 0
+    },
   ];
   
-  // Son 3 duyuru için duyuruları tarihe göre sırala
+  // Son duyurular
   const recentAnnouncements = [...(announcements || [])]
     .sort((a: Announcement, b: Announcement) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )
     .slice(0, 3);
   
-  // Son 3 arıza bildirimi için bildirimleri tarihe göre sırala
+  // Son bakım talepleri
   const recentMaintenanceRequests = [...(maintenanceRequests || [])]
     .sort((a: MaintenanceRequest, b: MaintenanceRequest) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )
     .slice(0, 3);
   
-  // Yükleniyor göstergesi
+  // Offline durumu
+  if (!isOnline) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+        <View style={styles.offlineContainer}>
+          <Ionicons name="wifi-outline" size={64} color="#6b7280" />
+          <Text style={styles.offlineTitle}>Bağlantı Yok</Text>
+          <Text style={styles.offlineText}>
+            İnternet bağlantınızı kontrol edin ve tekrar deneyin
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+            <Text style={styles.retryButtonText}>Tekrar Dene</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+  
+  // Yükleniyor durumu
   if (loading && (announcementsLoading || maintenanceLoading)) {
     return (
       <View style={styles.container}>
-        <View style={styles.safeArea} />
+        <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
       <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={styles.loadingText}>Yükleniyor...</Text>
@@ -122,19 +210,51 @@ export default function HomeScreen() {
     );
   }
   
-  // Ana içerik render
   return (
     <View style={styles.container}>
-      <View style={styles.safeArea} />
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
       
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Ana Sayfa</Text>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.headerContent}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerGreeting}>Merhaba,</Text>
+            <Text style={styles.headerName}>{user?.name || 'Kullanıcı'}</Text>
+            <Text style={styles.headerSubtitle}>
+              {user?.apartmentNo ? `Daire ${user.apartmentNo}` : 'Apartman Sakinı'}
+            </Text>
+          </View>
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.notificationButton}
+              onPress={() => router.push('/notifications' as any)}
+            >
+              <Ionicons name="notifications-outline" size={24} color="#374151" />
+              {unreadCount > 0 && (
+                <Badge style={styles.notificationBadge}>{unreadCount}</Badge>
+              )}
+            </TouchableOpacity>
+            <View style={styles.connectionStatus}>
+              <Ionicons 
+                name={isConnected ? "wifi" : "wifi-outline"} 
+                size={20} 
+                color={isConnected ? "#10b981" : "#ef4444"} 
+              />
+            </View>
+          </View>
+        </View>
       </View>
       
     <ScrollView 
+        style={styles.scrollView}
       contentContainerStyle={styles.contentContainer}
       refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            colors={[Colors.primary]}
+            tintColor={Colors.primary}
+          />
       }
         showsVerticalScrollIndicator={false}
     >
@@ -151,283 +271,284 @@ export default function HomeScreen() {
               placeholderTextColor="#8E8E93"
             />
             <TouchableOpacity style={styles.filterButton}>
-              <Ionicons name="options-outline" size={20} color={Colors.white} />
+              <LinearGradient
+                colors={['#667eea', '#764ba2']}
+                style={styles.filterButtonGradient}
+              >
+                <Ionicons name="options-outline" size={20} color="white" />
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
         
-        {/* Servisler */}
-        <View style={styles.servicesSection}>
+        {/* Hızlı Erişim */}
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Hızlı Erişim</Text>
-          <View style={styles.servicesContainer}>
-            {featuredServices.map((service) => (
+          <View style={styles.servicesGrid}>
+            {quickServices.map((service) => (
               <TouchableOpacity 
                 key={service.id}
-                style={styles.serviceItem}
-                onPress={() => router.push(service.route)}
+                style={styles.serviceCard}
+                onPress={() => router.push(service.route as any)}
+                activeOpacity={0.7}
               >
-                <View style={styles.serviceIconContainer}>
-                  <Ionicons name={service.icon} size={24} color={Colors.white} />
+                <View style={[styles.serviceIcon, { backgroundColor: service.color }]}>
+                  <Ionicons name={service.icon as any} size={24} color="white" />
+                  {service.count > 0 && (
+                    <Badge style={styles.serviceBadge}>{service.count}</Badge>
+                  )}
                 </View>
-                <Text style={styles.serviceText}>{service.label}</Text>
+                <Text style={styles.serviceLabel}>{service.label}</Text>
         </TouchableOpacity>
             ))}
           </View>
       </View>
       
       {/* Son Duyurular */}
-        <View style={styles.dealsSection}>
+        <View style={styles.section}>
         <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Son Duyurular</Text>
-            <Text 
-              style={styles.seeAllText}
-            onPress={() => router.push('/(tabs)/announcements')}
-          >
-            Tümünü Gör
-            </Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/announcements')}>
+              <Text style={styles.seeAllText}>Tümünü Gör</Text>
+            </TouchableOpacity>
         </View>
         
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalScrollContent}
-          >
             {recentAnnouncements.length > 0 ? (
-              recentAnnouncements.map((announcement: Announcement) => (
+            <View style={styles.announcementsList}>
+              {recentAnnouncements.map((announcement: Announcement) => (
                 <TouchableOpacity 
                   key={announcement._id} 
-                  style={styles.dealCard}
+                  style={styles.announcementCard}
                   onPress={() => router.push({
-                    pathname: '/(tabs)/announcements/[id]' as any,
-                    params: { id: announcement._id }
+                    pathname: '/(tabs)/announcements',
+                    params: { selectedId: announcement._id }
                   })}
+                  activeOpacity={0.7}
                 >
-                  <View style={[
-                    styles.dealImagePlaceholder, 
-                    {backgroundColor: announcement.priority === 'URGENT' || announcement.priority === 'HIGH' 
-                      ? Colors.warning 
-                      : Colors.primary
-                    }
-                  ]}>
-                    <Ionicons name="newspaper-outline" size={36} color={Colors.white} />
+                  <Card style={styles.card}>
+                    <Card.Content>
+                      <View style={styles.cardHeader}>
+                        <View style={styles.priorityBadge}>
+                          <Text style={styles.priorityText}>
+                            {announcement.priority === 'URGENT' ? 'ACİL' : 'NORMAL'}
+                          </Text>
                   </View>
-                  <View style={styles.dealContent}>
-                    <View style={styles.dealTitleRow}>
-                      <Text style={styles.dealTitle} numberOfLines={1}>{announcement.title}</Text>
-                      <View style={styles.ratingContainer}>
-                        {announcement.priority === 'URGENT' && (
-                          <View style={styles.priorityIcon}>
-                            <Ionicons name="alert" size={12} color={Colors.white} />
-                    </View>
-                  )}
-                </View>
-                    </View>
-                    <Text style={styles.dealLocation} numberOfLines={1}>
-                      {format(new Date(announcement.createdAt), 'dd MMM yyyy', { locale: tr })}
+                        <Text style={styles.cardDate}>
+                          {format(new Date(announcement.createdAt), 'dd MMM', { locale: tr })}
                     </Text>
-                    <Text style={styles.dealDesc} numberOfLines={2}>{announcement.content}</Text>
                   </View>
+                      <Title style={styles.cardTitle} numberOfLines={2}>
+                        {announcement.title}
+                      </Title>
+                      <Paragraph style={styles.cardContent} numberOfLines={3}>
+                        {announcement.content}
+                      </Paragraph>
+                    </Card.Content>
+                  </Card>
                 </TouchableOpacity>
-          ))
+              ))}
+            </View>
         ) : (
-              <View style={styles.emptyStateCard}>
-                <View style={styles.emptyIconContainer}>
-                  <Ionicons name="alert-circle-outline" size={36} color="#999" />
-                </View>
-                <Text style={styles.emptyText}>Henüz duyuru bulunmuyor.</Text>
+            <View style={styles.emptyState}>
+              <Ionicons name="megaphone-outline" size={48} color="#9ca3af" />
+              <Text style={styles.emptyStateText}>Henüz duyuru bulunmuyor</Text>
               </View>
         )}
-          </ScrollView>
-      </View>
-      
-        {/* Arıza Bildirimleri */}
-        <View style={styles.popularSection}>
-        <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Arıza Bildirimlerim</Text>
-            <Text 
-              style={styles.seeAllText}
-            onPress={() => router.push('/(tabs)/maintenance')}
-          >
-            Tümünü Gör
-            </Text>
         </View>
         
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalScrollContent}
-          >
+        {/* Son Bakım Talepleri */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Son Bakım Talepleri</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/maintenance')}>
+              <Text style={styles.seeAllText}>Tümünü Gör</Text>
+            </TouchableOpacity>
+          </View>
+          
             {recentMaintenanceRequests.length > 0 ? (
-              recentMaintenanceRequests.map((request: MaintenanceRequest) => (
+            <View style={styles.maintenanceList}>
+              {recentMaintenanceRequests.map((request: MaintenanceRequest) => (
                 <TouchableOpacity 
                   key={request._id} 
-                  style={styles.dealCard}
+                  style={styles.maintenanceCard}
                   onPress={() => router.push({
-                    pathname: '/(tabs)/maintenance/[id]' as any,
-                    params: { id: request._id }
+                    pathname: '/(tabs)/maintenance',
+                    params: { selectedId: request._id }
                   })}
+                  activeOpacity={0.7}
                 >
+                  <Card style={styles.card}>
+                    <Card.Content>
+                      <View style={styles.maintenanceHeader}>
                   <View style={[
-                    styles.dealImagePlaceholder, 
-                    {backgroundColor: 
-                      request.status === 'COMPLETED' ? Colors.success : 
-                      request.status === 'IN_PROGRESS' ? Colors.info : 
-                      request.status === 'CANCELLED' ? Colors.error : Colors.warning
-                    }
-                  ]}>
-                    <Ionicons name="construct-outline" size={36} color={Colors.white} />
+                          styles.statusBadge,
+                          { backgroundColor: getStatusColor(request.status) }
+                        ]}>
+                          <Text style={styles.statusText}>
+                            {getStatusText(request.status)}
+                          </Text>
                   </View>
-                  <View style={styles.dealContent}>
-                    <View style={styles.dealTitleRow}>
-                      <Text style={styles.dealTitle} numberOfLines={1}>{request.title}</Text>
-                      <View style={styles.statusBadgeSmall}>
-                        <Text style={styles.statusTextSmall}>
-                      {request.status === 'COMPLETED' ? 'Tamamlandı' : 
-                       request.status === 'IN_PROGRESS' ? 'İşlemde' : 
-                           request.status === 'CANCELLED' ? 'İptal' : 'Bekliyor'}
+                        <Text style={styles.cardDate}>
+                          {format(new Date(request.createdAt), 'dd/MM', { locale: tr })}
                         </Text>
                       </View>
-                    </View>
-                    <Text style={styles.dealLocation} numberOfLines={1}>
-                      {format(new Date(request.createdAt), 'dd MMM yyyy', { locale: tr })}
-                    </Text>
-                    <Text style={styles.dealDesc} numberOfLines={2}>{request.description}</Text>
-                  </View>
+                      <Title style={styles.cardTitle} numberOfLines={1}>
+                        {request.title}
+                      </Title>
+                      <Paragraph style={styles.cardContent} numberOfLines={2}>
+                        {request.description}
+                      </Paragraph>
+                    </Card.Content>
+                  </Card>
                 </TouchableOpacity>
-              ))
+              ))}
+            </View>
             ) : (
-              <View style={styles.emptyStateCard}>
-                <View style={styles.emptyIconContainer}>
-                  <Ionicons name="construct-outline" size={36} color="#999" />
-                </View>
-                <Text style={styles.emptyText}>Henüz arıza bildiriminiz bulunmuyor.</Text>
+            <View style={styles.emptyState}>
+              <Ionicons name="construct-outline" size={48} color="#9ca3af" />
+              <Text style={styles.emptyStateText}>Henüz bakım talebi bulunmuyor</Text>
               </View>
         )}
-          </ScrollView>
       </View>
       </ScrollView>
-      
-      {/* BottomNav bileşenini kullan */}
-      {/* BottomNav artık Tabs tarafından otomatik olarak eklendiği için kaldırıldı */}
       </View>
   );
 }
 
+// Yardımcı fonksiyonlar
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'PENDING': return '#f59e0b';
+    case 'IN_PROGRESS': return '#3b82f6';
+    case 'COMPLETED': return '#10b981';
+    case 'CANCELLED': return '#ef4444';
+    default: return '#6b7280';
+  }
+};
+
+const getStatusText = (status: string) => {
+  switch (status) {
+    case 'PENDING': return 'Bekliyor';
+    case 'IN_PROGRESS': return 'Devam Ediyor';
+    case 'COMPLETED': return 'Tamamlandı';
+    case 'CANCELLED': return 'İptal';
+    default: return status;
+  }
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
-  },
-  safeArea: {
-    height: 35, // Sadece durum çubuğu için yer 
-    backgroundColor: Colors.white,
+    backgroundColor: '#f8fafc',
   },
   header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: Colors.white,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: 'white',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: Colors.black,
-  },
-  contentContainer: {
-    paddingBottom: 80,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  loadingText: {
-    marginTop: 12,
+  headerLeft: {
+    flex: 1,
+  },
+  headerGreeting: {
     fontSize: 16,
-    color: '#666',
+    color: '#6b7280',
+    fontWeight: '400',
+  },
+  headerName: {
+    fontSize: 24,
+    color: '#111827',
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: '#ef4444',
+    minWidth: 18,
+    height: 18,
+  },
+  connectionStatus: {
+    padding: 8,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingBottom: 20,
   },
   searchSection: {
-    padding: 16,
-    backgroundColor: Colors.white,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    backgroundColor: 'white',
+    marginTop: -10,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   searchTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
-    marginBottom: 16,
-    color: Colors.black,
+    color: '#1f2937',
+    marginBottom: 12,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f2f2f7',
+    backgroundColor: '#f3f4f6',
     borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 50,
+    paddingHorizontal: 16,
+    height: 48,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 12,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: Colors.black,
-    height: '100%',
+    color: '#1f2937',
   },
   filterButton: {
-    backgroundColor: Colors.primary,
+    marginLeft: 12,
+  },
+  filterButtonGradient: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  servicesSection: {
-    padding: 16,
-    backgroundColor: Colors.white,
-    marginTop: 16,
-    borderRadius: 16,
-    marginHorizontal: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
+  section: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
+    color: '#111827',
     marginBottom: 16,
-    color: Colors.black,
-  },
-  servicesContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  serviceItem: {
-    alignItems: 'center',
-    width: '23%',
-  },
-  serviceIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-    backgroundColor: Colors.primary,
-  },
-  serviceText: {
-    fontSize: 14,
-    color: Colors.black,
-    textAlign: 'center',
-  },
-  dealsSection: {
-    padding: 16,
-    marginTop: 16,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -436,110 +557,169 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   seeAllText: {
-    fontSize: 14,
     color: Colors.primary,
+    fontSize: 14,
     fontWeight: '600',
   },
-  horizontalScrollContent: {
-    paddingRight: 16,
+  servicesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
-  dealCard: {
-    width: 260,
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    marginRight: 16,
-    overflow: 'hidden',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
+  serviceCard: {
+    width: (width - 60) / 2,
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    marginBottom: 16,
     elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  dealImagePlaceholder: {
-    height: 120,
-    backgroundColor: Colors.primary,
+  serviceIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+    marginBottom: 12,
   },
-  dealContent: {
-    padding: 16,
+  serviceBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#ef4444',
+    minWidth: 20,
+    height: 20,
   },
-  dealTitleRow: {
+  serviceLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    textAlign: 'center',
+  },
+  announcementsList: {
+    gap: 12,
+  },
+  announcementCard: {
+    marginBottom: 8,
+  },
+  maintenanceList: {
+    gap: 12,
+  },
+  maintenanceCard: {
+    marginBottom: 8,
+  },
+  card: {
+    backgroundColor: 'white',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
-  },
-  dealTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.black,
-    flex: 1,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  priorityIcon: {
-    backgroundColor: Colors.error,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 4,
-  },
-  dealLocation: {
-    fontSize: 14,
-    color: '#8E8E93',
     marginBottom: 8,
   },
-  dealDesc: {
-    fontSize: 14,
-    color: '#4a4a4a',
-    lineHeight: 20,
-    marginTop: 4,
-  },
-  emptyStateCard: {
-    width: 260,
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 24,
-    justifyContent: 'center',
+  maintenanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
+    marginBottom: 8,
   },
-  emptyIconContainer: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-  },
-  popularSection: {
-    padding: 16,
-    marginTop: 8,
-  },
-  statusBadgeSmall: {
+  priorityBadge: {
+    backgroundColor: '#fef3c7',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: '#f0f0f0',
+    borderRadius: 12,
   },
-  statusTextSmall: {
-    color: '#4a4a4a',
+  priorityText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#92400e',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'white',
+  },
+  cardDate: {
     fontSize: 12,
+    color: '#6b7280',
     fontWeight: '500',
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  cardContent: {
+    fontSize: 14,
+    color: '#6b7280',
+    lineHeight: 20,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#6b7280',
+    marginTop: 12,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#374151',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+  },
+  offlineContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  offlineTitle: {
+    color: '#374151',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  offlineText: {
+    color: '#6b7280',
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  retryButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
