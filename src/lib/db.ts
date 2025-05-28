@@ -12,10 +12,10 @@ declare global {
 }
 
 // MongoDB URI
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://bilgeyilmaz121:6RlagK0hLnV3ruOY@turkey-crime-stats.bfnxn.mongodb.net/apartman-site?retryWrites=true&w=majority";
 
-if (!MONGODB_URI) {
-  throw new Error('MongoDB URI çevre değişkeni tanımlanmamış. Lütfen .env dosyasını kontrol edin.');
+if (!process.env.MONGODB_URI) {
+  console.info('Using fallback MongoDB URI from .env file.');
 }
 
 // Bağlantı önbelleği

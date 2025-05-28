@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import dbConnect from '@/lib/db'
 import mongoose from 'mongoose'
 import { cookies } from 'next/headers'
-import crypto from 'crypto'
+import jwt from 'jsonwebtoken'
 
 export async function POST(req: NextRequest) {
   try {
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       { $set: { lastLogin: new Date() } }
     )
     
-    // Basit JWT token oluştur
+    // JWT token oluştur
     const payload = {
       id: user._id.toString(),
       email: user.email,
@@ -76,51 +76,41 @@ export async function POST(req: NextRequest) {
       role: user.role,
       isActive: user.isActive,
       apartmentNo: user.apartmentNo,
-      block: user.block,
-      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 1 gün
+      block: user.block
     }
     
-    // Base64Url encode
-    const base64UrlEncode = (str: string) => {
-      return Buffer.from(str)
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '')
-    }
+    // JWT secret'i al
+    const jwtSecret = 'apartman-site-super-secret-jwt-key-2024-production-ready-secure'
     
-    // Header
-    const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-    
-    // Payload
-    const encodedPayload = base64UrlEncode(JSON.stringify(payload))
-    
-    // Basit imza (gerçek doğrulama yapmıyoruz, sadece decode ediyoruz)
-    // Gerçek bir uygulamada burada HMAC-SHA256 imzası kullanılmalıdır
-    const signature = base64UrlEncode('signature-placeholder')
-    
-    // JWT token'ı oluştur
-    const token = `${header}.${encodedPayload}.${signature}`
-    
-    // Cookie'ye token'ı kaydet
-    cookies().set({
-      name: 'token',
-      value: token,
-      httpOnly: true,
-      path: '/',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 24, // 1 gün
+    // Gerçek JWT token oluştur
+    const token = jwt.sign(payload, jwtSecret, {
+      expiresIn: '24h'
     })
     
-    return NextResponse.json({
+    // Cookie'ye token'ı kaydet
+    const response = NextResponse.json({
       success: true,
       user: {
         id: user._id.toString(),
         email: user.email,
         name: user.name,
         role: user.role,
-      }
+      },
+      token: token
     })
+
+    // Cookie'yi response'a ekle
+    response.cookies.set({
+      name: 'token',
+      value: token,
+      httpOnly: false, // Client-side'da erişebilmek için
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24, // 1 gün
+      sameSite: 'lax'
+    })
+    
+    return response
     
   } catch (error) {
     console.error('Giriş sırasında hata:', error)

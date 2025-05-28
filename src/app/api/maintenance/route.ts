@@ -38,6 +38,42 @@ export async function POST(request: Request) {
     const body = await request.json();
     const maintenanceRequest = await (Maintenance as Model<any>).create(body);
     
+    // Socket.IO ile gerçek zamanlı bildirim gönder
+    const io = (global as any).io;
+    if (io) {
+      const notificationData = {
+        id: Date.now(),
+        title: 'Yeni Arıza Bildirimi',
+        message: `${maintenanceRequest.title || maintenanceRequest.description}`,
+        type: 'maintenance',
+        priority: maintenanceRequest.priority || 'NORMAL',
+        timestamp: new Date(),
+        data: {
+          maintenanceId: maintenanceRequest._id,
+          apartmentNo: maintenanceRequest.apartmentNo,
+          block: maintenanceRequest.block,
+          category: maintenanceRequest.category,
+          status: maintenanceRequest.status || 'PENDING'
+        }
+      };
+
+      // Admin'lere bildirim gönder
+      io.to('admin-room').emit('maintenance-notification', {
+        type: 'new-request',
+        data: notificationData
+      });
+
+      // Aynı blokta yaşayan kullanıcılara da bildirim gönder (isteğe bağlı)
+      if (maintenanceRequest.block) {
+        io.to(`block-${maintenanceRequest.block}`).emit('maintenance-notification', {
+          type: 'new-request',
+          data: notificationData
+        });
+      }
+
+      console.log('Yeni arıza bildirimi gönderildi:', maintenanceRequest.title);
+    }
+    
     return NextResponse.json(maintenanceRequest, { status: 201 });
   } catch (error) {
     console.error('Error in POST /api/maintenance:', error);

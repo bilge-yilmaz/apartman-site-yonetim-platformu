@@ -1,10 +1,12 @@
 import { MongoClient } from 'mongodb'
+import mongoose from 'mongoose'
 
-if (!process.env.MONGODB_URI) {
+// MongoDB URI with fallback
+const uri = process.env.MONGODB_URI || 'mongodb+srv://bilgeyilmaz121:6RlagK0hLnV3ruOY@turkey-crime-stats.bfnxn.mongodb.net/apartman-site?retryWrites=true&w=majority'
+
+if (!uri) {
   throw new Error('Invalid/Missing environment variable: "MONGODB_URI"')
 }
-
-const uri = process.env.MONGODB_URI
 const options = {}
 
 let client
@@ -26,6 +28,22 @@ if (process.env.NODE_ENV === 'development') {
   // In production mode, it's best to not use a global variable.
   client = new MongoClient(uri, options)
   clientPromise = client.connect()
+}
+
+// Mongoose bağlantısı
+export async function connectDB() {
+  try {
+    if (mongoose.connections[0].readyState) {
+      return mongoose.connections[0]
+    }
+    
+    await mongoose.connect(uri)
+    console.log('MongoDB bağlantısı başarılı')
+    return mongoose.connections[0]
+  } catch (error) {
+    console.error('MongoDB bağlantı hatası:', error)
+    throw error
+  }
 }
 
 // Export a module-scoped MongoClient promise. By doing this in a

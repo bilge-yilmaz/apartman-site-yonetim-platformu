@@ -37,6 +37,51 @@ export async function POST(request: Request) {
     const body = await request.json();
     const announcement = await (Announcement as Model<any>).create(body);
     
+    // Socket.IO ile gerçek zamanlı bildirim gönder
+    const io = (global as any).io;
+    if (io) {
+      const notificationData = {
+        id: Date.now(),
+        title: announcement.title,
+        message: announcement.content || announcement.description || 'Yeni duyuru yayınlandı',
+        type: 'announcement',
+        priority: announcement.priority || 'NORMAL',
+        timestamp: new Date(),
+        data: {
+          announcementId: announcement._id,
+          category: announcement.category,
+          isUrgent: announcement.isUrgent || false
+        }
+      };
+
+      // Duyuru kategorisine göre hedefleme
+      if (announcement.targetType === 'all' || !announcement.targetType) {
+        // Tüm kullanıcılara gönder
+        io.emit('announcement-notification', notificationData);
+        console.log('Duyuru tüm kullanıcılara gönderildi:', announcement.title);
+      } else if (announcement.targetBlocks && announcement.targetBlocks.length > 0) {
+        // Belirli bloklara gönder
+        for (const block of announcement.targetBlocks) {
+          io.to(`block-${block}`).emit('announcement-notification', notificationData);
+        }
+        console.log('Duyuru belirli bloklara gönderildi:', announcement.targetBlocks);
+      } else if (announcement.targetRoles && announcement.targetRoles.length > 0) {
+        // Belirli rollere gönder
+        for (const role of announcement.targetRoles) {
+          if (role === 'ADMIN' || role === 'MANAGER') {
+            io.to('admin-room').emit('announcement-notification', notificationData);
+          } else if (role === 'RESIDENT') {
+            io.emit('announcement-notification', notificationData);
+          }
+        }
+        console.log('Duyuru belirli rollere gönderildi:', announcement.targetRoles);
+      } else {
+        // Varsayılan: tüm kullanıcılara gönder
+        io.emit('announcement-notification', notificationData);
+        console.log('Duyuru varsayılan olarak tüm kullanıcılara gönderildi');
+      }
+    }
+    
     return NextResponse.json(announcement);
   } catch (error) {
     console.error('Error in POST /api/announcements:', error);

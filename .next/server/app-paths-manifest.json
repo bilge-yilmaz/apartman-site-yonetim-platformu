@@ -1,7 +1,10 @@
 {
   "/not-found": "app/not-found.js",
+  "/unauthorized/page": "app/unauthorized/page.js",
   "/api/auth/login/route": "app/api/auth/login/route.js",
   "/auth/signin/page": "app/auth/signin/page.js",
-  "/admin/dashboard/page": "app/admin/dashboard/page.js",
+  "/admin/payments/page": "app/admin/payments/page.js",
+  "/admin/ai-predictions/page": "app/admin/ai-predictions/page.js",
+  "/admin/maintenance/page": "app/admin/maintenance/page.js",
   "/resident/dashboard/page": "app/resident/dashboard/page.js"
 }

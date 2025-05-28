@@ -16,6 +16,7 @@ import {
   Cog6ToothIcon,
   XMarkIcon,
   Bars3Icon,
+  CpuChipIcon,
 } from "@heroicons/react/24/outline"
 
 // Admin ve Manager menü öğeleri
@@ -26,7 +27,7 @@ const adminNavigation = [
   { name: "Duyurular", href: "/admin/announcements", icon: MegaphoneIcon },
   { name: "Bakım Talepleri", href: "/admin/maintenance", icon: WrenchIcon },
   { name: "Rezervasyonlar", href: "/admin/reservations", icon: CalendarIcon },
-  { name: "Raporlar", href: "/admin/reports", icon: ChartBarIcon },
+  { name: "Raporlar", href: "/admin/ai-predictions", icon: CpuChipIcon },
   { name: "Ayarlar", href: "/admin/settings", icon: Cog6ToothIcon },
 ]
 

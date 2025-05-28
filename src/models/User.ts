@@ -4,11 +4,13 @@ export type UserRole = 'ADMIN' | 'MANAGER' | 'RESIDENT'
 
 export interface IUser {
   email: string
+  password?: string
   name: string
   image?: string
   role: UserRole
   apartmentNo?: string
   block?: string
+  phone?: string
   isActive: boolean
   lastLogin?: Date
   createdAt: Date
@@ -22,6 +24,7 @@ interface UserModel extends Model<IUser> {}
 const UserSchema = new mongoose.Schema<IUser, UserModel>(
   {
     email: { type: String, required: true, unique: true },
+    password: { type: String },
     name: { type: String, required: true },
     image: { type: String },
     role: {
@@ -31,6 +34,7 @@ const UserSchema = new mongoose.Schema<IUser, UserModel>(
     },
     apartmentNo: { type: String, default: '' },
     block: { type: String, default: '' },
+    phone: { type: String },
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
   },
@@ -44,3 +48,4 @@ const User = (mongoose.models.User as UserModel) ||
   mongoose.model<IUser, UserModel>('User', UserSchema)
 
 export default User
+

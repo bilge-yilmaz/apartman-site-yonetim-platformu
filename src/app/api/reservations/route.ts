@@ -68,6 +68,52 @@ export async function POST(request: Request) {
     
     const reservation = await (Reservation as Model<any>).create(body);
     
+    // Socket.IO ile rezervasyon bildirimi gönder
+    const io = (global as any).io;
+    if (io) {
+      const notificationData = {
+        id: Date.now(),
+        title: 'Yeni Rezervasyon',
+        message: `${(reservation as any).facility} - ${new Date((reservation as any).startTime).toLocaleDateString('tr-TR')}`,
+        type: 'reservation',
+        priority: 'NORMAL',
+        timestamp: new Date(),
+        data: {
+          reservationId: (reservation as any)._id,
+          facility: (reservation as any).facility,
+          apartmentNo: (reservation as any).apartmentNo,
+          block: (reservation as any).block,
+          startTime: (reservation as any).startTime,
+          endTime: (reservation as any).endTime,
+          status: (reservation as any).status || 'PENDING'
+        }
+      };
+
+      // Admin'lere rezervasyon bildirimi gönder
+      io.to('admin-room').emit('reservation-notification', {
+        type: 'new-reservation',
+        data: notificationData
+      });
+
+      // İlgili apartman sakinlerine bildirim gönder
+      if ((reservation as any).apartmentNo) {
+        io.to(`apartment-${(reservation as any).apartmentNo}`).emit('reservation-notification', {
+          type: 'new-reservation',
+          data: notificationData
+        });
+      }
+
+      // Aynı blokta yaşayan kullanıcılara da bildirim gönder
+      if ((reservation as any).block) {
+        io.to(`block-${(reservation as any).block}`).emit('reservation-notification', {
+          type: 'new-reservation',
+          data: notificationData
+        });
+      }
+
+      console.log('Rezervasyon bildirimi gönderildi:', (reservation as any).facility);
+    }
+    
     return NextResponse.json(reservation);
   } catch (error) {
     console.error('Error in POST /api/reservations:', error);
