@@ -9,16 +9,20 @@ import NotificationService from '../services/notificationService'
 const getSocketUrl = () => {
   // Environment variable'dan URL al
   if (process.env.EXPO_PUBLIC_SOCKET_URL) {
+    console.log('🌐 Environment Socket URL kullanılıyor:', process.env.EXPO_PUBLIC_SOCKET_URL);
     return process.env.EXPO_PUBLIC_SOCKET_URL;
   }
   
   // Fallback olarak IP adresi kullan
   const COMPUTER_IP = '10.192.90.95';
+  const socketUrl = `http://${COMPUTER_IP}:3000`;
   
   if (__DEV__) {
-    return `http://${COMPUTER_IP}:3000`;
+    console.log('🌐 Development Socket URL:', socketUrl);
+    return socketUrl;
   }
   
+  console.log('🌐 Production Socket URL: https://your-production-api.com');
   return 'https://your-production-api.com'; // Production URL
 }
 
@@ -59,15 +63,22 @@ export const useSocket = (): UseSocketReturn => {
   useEffect(() => {
     const initSocket = async () => {
       try {
+        console.log('🔍 Socket bağlantısı başlatılıyor...');
+        console.log('👤 User bilgisi:', user);
+        
         const token = await getToken()
+        console.log('🔑 Token durumu:', token ? 'Mevcut' : 'Yok');
+        
         if (!token || !user) {
-          console.log('Token veya user bilgisi yok, socket bağlantısı kurulmuyor')
+          console.log('❌ Token veya user bilgisi yok, socket bağlantısı kurulmuyor')
+          setError('Token veya kullanıcı bilgisi eksik');
           return
         }
 
-        console.log('Socket bağlantısı kuruluyor...')
+        const socketUrl = getSocketUrl();
+        console.log('🔌 Socket bağlantısı kuruluyor...', socketUrl);
         
-        const socket = io(getSocketUrl(), {
+        const socket = io(socketUrl, {
           auth: {
             token: token
           },
@@ -76,50 +87,68 @@ export const useSocket = (): UseSocketReturn => {
           reconnection: true,
           reconnectionAttempts: 5,
           reconnectionDelay: 1000,
+          forceNew: true // Yeni bağlantı zorla
         })
 
-        // Bağlantı olayları
+        // Detaylı bağlantı logging
         socket.on('connect', () => {
-          console.log('Socket bağlandı:', socket.id)
+          console.log('✅ Socket bağlandı:', socket.id)
+          console.log('🏠 Kullanıcı bilgileri:', {
+            id: user.id,
+            role: user.role,
+            apartmentNo: user.apartmentNo,
+            block: user.block
+          });
           setIsConnected(true)
           setError(null)
 
           // Kullanıcı odalarına katıl
           if (user.role === 'ADMIN') {
+            console.log('👑 Admin odasına katılıyor...');
             socket.emit('join-admin')
           } else if (user.role === 'RESIDENT') {
+            console.log('🏠 Resident odasına katılıyor...');
             socket.emit('join-resident')
             if (user.apartmentNo) {
+              console.log(`🏠 Apartman ${user.apartmentNo} odasına katılıyor...`);
               socket.emit('join-apartment', user.apartmentNo)
             }
             if (user.block) {
+              console.log(`🏢 Blok ${user.block} odasına katılıyor...`);
               socket.emit('join-block', user.block)
             }
           }
           
           // Kullanıcı ID bazlı odaya katıl
+          console.log(`👤 User-${user.id} odasına katılıyor...`);
           socket.emit('join-user', user.id)
         })
 
         socket.on('disconnect', (reason) => {
-          console.log('Socket bağlantısı kesildi:', reason)
+          console.log('❌ Socket bağlantısı kesildi:', reason)
           setIsConnected(false)
         })
 
         socket.on('connect_error', (error) => {
-          console.error('Socket bağlantı hatası:', error)
+          console.error('❌ Socket bağlantı hatası:', error)
+          console.error('❌ Hata detayları:', {
+            message: error.message,
+            description: (error as any).description,
+            context: (error as any).context,
+            type: (error as any).type
+          });
           setError('Bağlantı hatası: ' + error.message)
           setIsConnected(false)
         })
 
         socket.on('reconnect', (attemptNumber) => {
-          console.log('Socket yeniden bağlandı, deneme:', attemptNumber)
+          console.log('🔄 Socket yeniden bağlandı, deneme:', attemptNumber)
           setIsConnected(true)
           setError(null)
         })
 
         socket.on('reconnect_error', (error) => {
-          console.error('Socket yeniden bağlantı hatası:', error)
+          console.error('❌ Socket yeniden bağlantı hatası:', error)
           setError('Yeniden bağlantı hatası: ' + error.message)
         })
 

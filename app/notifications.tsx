@@ -37,11 +37,14 @@ export default function NotificationsScreen() {
   // Bildirimleri yükle
   const loadNotifications = useCallback(async () => {
     try {
+      console.log('📥 Bildirimler yükleme başlatıldı...');
       setLoading(true);
       const data = await getNotifications({ limit: 50 });
+      console.log('📥 API\'den gelen bildirimler:', data);
+      console.log('📥 Bildirim sayısı:', Array.isArray(data) ? data.length : 'Array değil');
       setNotifications(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Bildirimler yüklenirken hata:', error);
+      console.error('❌ Bildirimler yüklenirken hata:', error);
       Alert.alert('Hata', 'Bildirimler yüklenemedi');
       setNotifications([]);
     } finally {
@@ -76,13 +79,22 @@ export default function NotificationsScreen() {
     const apiNotifications = Array.isArray(notifications) ? notifications : [];
     const convertedSocketNotifications = convertSocketNotifications(socketNotifications || []);
     
+    console.log('📊 Bildirim istatistikleri:', {
+      apiCount: apiNotifications.length,
+      socketCount: convertedSocketNotifications.length,
+      totalSocket: socketNotifications?.length || 0
+    });
+    
     // Birleştir ve tarihe göre sırala
     const combined = [...apiNotifications, ...convertedSocketNotifications];
-    return combined.sort((a, b) => {
+    const sorted = combined.sort((a, b) => {
       const dateA = new Date(a.createdAt).getTime();
       const dateB = new Date(b.createdAt).getTime();
       return dateB - dateA;
     });
+    
+    console.log('📊 Toplam birleştirilmiş bildirim sayısı:', sorted.length);
+    return sorted;
   }, [notifications, socketNotifications, convertSocketNotifications]);
   
   useEffect(() => {
@@ -100,16 +112,21 @@ export default function NotificationsScreen() {
   const handleMarkAsRead = async (notification: Notification) => {
     if (!notification || notification.isRead) return;
     
+    console.log('📖 Bildirim okundu olarak işaretleniyor:', notification._id, notification.title);
+    
     try {
       // Socket bildirimi ise
       if (notification._id.startsWith('socket-')) {
+        console.log('📖 Socket bildirimi okundu olarak işaretleniyor...');
         // Socket bildirimi için local state güncelle
         setNotifications(prev => 
           prev.map(n => 
             n._id === notification._id ? { ...n, isRead: true } : n
           )
         );
+        console.log('✅ Socket bildirimi local state\'de güncellendi');
       } else {
+        console.log('📖 API bildirimi okundu olarak işaretleniyor...');
         // API bildirimi ise
         await markNotificationAsRead(notification._id);
         setNotifications(prev => 
@@ -117,14 +134,18 @@ export default function NotificationsScreen() {
             n._id === notification._id ? { ...n, isRead: true } : n
           )
         );
+        console.log('✅ API bildirimi başarıyla güncellendi');
       }
     } catch (error) {
-      console.error('Bildirim okundu olarak işaretlenirken hata:', error);
+      console.error('❌ Bildirim okundu olarak işaretlenirken hata:', error);
+      Alert.alert('Hata', 'Bildirim güncellenemedi');
     }
   };
   
   // Bildirimi sil
   const handleDeleteNotification = async (notificationId: string) => {
+    console.log('🗑️ Bildirim silme işlemi başlatılıyor:', notificationId);
+    
     Alert.alert(
       'Bildirimi Sil',
       'Bu bildirimi silmek istediğinizden emin misiniz?',
@@ -137,15 +158,19 @@ export default function NotificationsScreen() {
             try {
               // Socket bildirimi ise
               if (notificationId.startsWith('socket-')) {
+                console.log('🗑️ Socket bildirimi siliniyor...');
                 // Socket bildirimi için sadece local state'den kaldır
                 setNotifications(prev => prev.filter(n => n._id !== notificationId));
+                console.log('✅ Socket bildirimi local state\'den kaldırıldı');
               } else {
+                console.log('🗑️ API bildirimi siliniyor...');
                 // API bildirimi ise
                 await deleteNotification(notificationId);
                 setNotifications(prev => prev.filter(n => n._id !== notificationId));
+                console.log('✅ API bildirimi başarıyla silindi');
               }
             } catch (error) {
-              console.error('Bildirim silinirken hata:', error);
+              console.error('❌ Bildirim silinirken hata:', error);
               Alert.alert('Hata', 'Bildirim silinemedi');
             }
           }

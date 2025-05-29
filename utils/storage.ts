@@ -104,7 +104,7 @@ export const storage = {
 
   // User data methods
   async getUser(): Promise<User | null> {
-    return this.get<User>(KEYS.USER_DATA);
+    return this.get(KEYS.USER_DATA) as Promise<User | null>;
   },
 
   async setUser(user: User) {
@@ -117,7 +117,7 @@ export const storage = {
 
   // App settings methods
   async getSettings(): Promise<AppSettings> {
-    const settings = await this.get<AppSettings>(KEYS.APP_SETTINGS);
+    const settings = await this.get(KEYS.APP_SETTINGS) as AppSettings | null;
     return settings || DEFAULT_APP_SETTINGS;
   },
 

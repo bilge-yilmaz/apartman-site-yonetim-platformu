@@ -521,8 +521,12 @@ export const getNotifications = async (params?: {
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     
     const response = await apiClient.get(`/api/user-notifications?${queryParams.toString()}`);
-    console.log('✅ Kullanıcı bildirimleri başarıyla alındı:', response.data.length);
-    return response.data;
+    console.log('✅ Kullanıcı bildirimleri API yanıtı:', response.data);
+    
+    // API formatı: { data: notifications[], pagination: {...}, unreadCount: number }
+    const notifications = response.data.data || [];
+    console.log('✅ Kullanıcı bildirimleri başarıyla alındı:', notifications.length);
+    return notifications;
   } catch (error: any) {
     console.error('❌ Bildirimler alınırken hata:', error.response?.data || error.message);
     throw new Error('Bildirimler alınamadı');
@@ -531,9 +535,11 @@ export const getNotifications = async (params?: {
 
 export const markNotificationAsRead = async (id: string): Promise<Notification> => {
   try {
-    const response = await apiClient.put(`/api/user-notifications/${id}`, { isRead: true });
+    const response = await apiClient.put('/api/user-notifications', { 
+      notificationId: id 
+    });
     console.log('✅ Bildirim okundu olarak işaretlendi:', id);
-    return response.data;
+    return response.data.data || response.data;
   } catch (error: any) {
     console.error('❌ Bildirim okundu olarak işaretlenirken hata:', error.response?.data || error.message);
     throw new Error('Bildirim güncellenemedi');
@@ -552,7 +558,7 @@ export const markAllNotificationsAsRead = async (): Promise<{ message: string }>
 
 export const deleteNotification = async (id: string): Promise<{ message: string }> => {
   try {
-    const response = await apiClient.delete(`/api/user-notifications/${id}`);
+    const response = await apiClient.delete(`/api/user-notifications?id=${id}`);
     console.log('✅ Bildirim başarıyla silindi:', id);
     return response.data;
   } catch (error: any) {
