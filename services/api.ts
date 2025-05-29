@@ -5,27 +5,29 @@ import NetInfo from '@react-native-community/netinfo';
 
 // Dinamik API Base URL belirleme
 const getApiBaseUrl = () => {
+  // Sabit IP adresi kullan (cache sorununu çözmek için)
+  const FIXED_IP = '10.192.90.95:3000';
+  
   // Development ortamında
   if (__DEV__) {
-    // iOS Simulator için localhost
-    if (Constants.platform?.ios) {
-      return 'http://localhost:3000';
-    }
-    // Android Emulator için 10.0.2.2
-    else if (Constants.platform?.android) {
-      return 'http://10.0.2.2:3000';
-    }
-    // Fiziksel cihaz için local network IP (değiştirin)
-    else {
-      return 'http://192.168.1.100:3000'; // Kendi IP adresinizi yazın
-    }
+    console.log('🌐 Sabit IP adresi kullanılıyor:', `http://${FIXED_IP}`);
+    return `http://${FIXED_IP}`;
   }
+  
   // Production ortamında
-  return 'https://your-production-api.com'; // Production URL'inizi yazın
+  const prodUrl = process.env.EXPO_PUBLIC_API_URL || 'https://your-production-api.com';
+  console.log('🚀 Production API URL:', prodUrl);
+  return prodUrl;
 };
 
 const API_BASE_URL = getApiBaseUrl();
 export const TOKEN_KEY = 'user_token';
+
+console.log('🔧 API Client konfigürasyonu:', {
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  platform: Constants.platform
+});
 
 // Axios instance oluşturma
 const apiClient = axios.create({
@@ -35,6 +37,30 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Request logging
+apiClient.interceptors.request.use(
+  (config) => {
+    console.log(`📤 API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    return config;
+  },
+  (error) => {
+    console.error('📤 API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Response logging
+apiClient.interceptors.response.use(
+  (response) => {
+    console.log(`📥 API Response: ${response.status} ${response.config.url}`);
+    return response;
+  },
+  (error) => {
+    console.error(`📥 API Response Error: ${error.response?.status || 'Network'} ${error.config?.url}`, error.message);
+    return Promise.reject(error);
+  }
+);
 
 // Network durumu kontrol fonksiyonu
 export const checkNetworkConnection = async (): Promise<boolean> => {
@@ -72,6 +98,36 @@ export const removeToken = async (): Promise<void> => {
     console.error('Error removing the auth token', error);
   }
 };
+
+// Auth interceptor'ları (logging'den sonra ekleniyor)
+apiClient.interceptors.request.use(
+  async (config) => {
+    try {
+      // Token kontrolü ve gerekirse yenileme
+      const { ensureValidToken } = await import('../utils/auth');
+      const tokenResult = await ensureValidToken();
+      
+      if (tokenResult.success && tokenResult.token) {
+        config.headers.Authorization = `Bearer ${tokenResult.token}`;
+        console.log('🔑 API isteğine token eklendi');
+      } else {
+        console.log('⚠️ Geçerli token bulunamadı:', tokenResult.message);
+        // Token yoksa veya geçersizse Authorization header'ını kaldır
+        delete config.headers.Authorization;
+      }
+    } catch (error) {
+      console.log('⚠️ Token kontrol hatası, devam ediliyor:', error);
+      // Hata durumunda devam et, token olmadan istek gönder
+      delete config.headers.Authorization;
+    }
+    
+    return config;
+  },
+  (error) => {
+    console.log('⚠️ Auth interceptor hatası:', error);
+    return Promise.reject(error);
+  }
+);
 
 // API Response wrapper
 interface ApiResponse<T> {
@@ -153,29 +209,48 @@ export const getUserProfile = async (): Promise<ApiResponse<any>> => {
   }
 };
 
-// API client interceptor'ları
-apiClient.interceptors.request.use(
-  async (config) => {
-    const token = await getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
 // Response interceptor - token süresi dolmuşsa otomatik logout
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      // Token süresi dolmuş, kullanıcıyı logout yap
-      await removeToken();
-      // Router'a logout sinyali gönder (store üzerinden)
+    const originalRequest = error.config;
+    
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      console.log('🔄 401 hatası alındı, token yenileme deneniyor...');
+      originalRequest._retry = true;
+      
+      try {
+        const { refreshToken } = await import('../utils/auth');
+        const refreshResult = await refreshToken();
+        
+        if (refreshResult.success && refreshResult.token) {
+          console.log('✅ Token yenilendi, istek tekrarlanıyor');
+          originalRequest.headers.Authorization = `Bearer ${refreshResult.token}`;
+          return apiClient(originalRequest);
+        } else {
+          console.log('❌ Token yenilenemedi, kullanıcı çıkış yapılıyor');
+          // Token yenilenemedi, kullanıcıyı logout yap
+          await removeToken();
+          // Store'a logout sinyali gönder
+          try {
+            const { useUserStore } = await import('../store/user');
+            useUserStore.getState().clearUser();
+          } catch (storeError) {
+            console.log('⚠️ Store temizleme hatası:', storeError);
+          }
+        }
+      } catch (refreshError) {
+        console.error('❌ Token yenileme hatası:', refreshError);
+        await removeToken();
+        try {
+          const { useUserStore } = await import('../store/user');
+          useUserStore.getState().clearUser();
+        } catch (storeError) {
+          console.log('⚠️ Store temizleme hatası:', storeError);
+        }
+      }
     }
+    
     return Promise.reject(error);
   }
 );
@@ -385,11 +460,29 @@ export const getPaymentById = async (id: string): Promise<Payment> => {
 
 export const updatePayment = async (id: string, data: Partial<PaymentData>): Promise<Payment> => {
   try {
+    console.log('💳 Ödeme güncelleniyor:', id, data);
     const response = await apiClient.put(`/api/payments/${id}`, data);
+    console.log('✅ Ödeme güncelleme yanıtı:', response.data);
     return response.data.data || response.data;
   } catch (error: any) {
-    console.error(`Update payment ${id} error:`, error.response?.data || error.message);
+    console.error(`❌ Update payment ${id} error:`, error.response?.data || error.message);
     throw error.response?.data || new Error('Ödeme kaydı güncellenemedi');
+  }
+};
+
+export const makePayment = async (id: string, paymentMethod: string = 'ONLINE'): Promise<Payment> => {
+  try {
+    console.log('💰 Ödeme yapılıyor:', id, paymentMethod);
+    const response = await apiClient.put(`/api/payments/${id}`, {
+      status: 'PAID',
+      paymentMethod: paymentMethod,
+      paymentDate: new Date().toISOString()
+    });
+    console.log('✅ Ödeme başarılı:', response.data);
+    return response.data.data || response.data;
+  } catch (error: any) {
+    console.error(`❌ Make payment ${id} error:`, error.response?.data || error.message);
+    throw error.response?.data || new Error('Ödeme işlemi başarısız');
   }
 };
 
@@ -422,21 +515,28 @@ export const getNotifications = async (params?: {
   limit?: number;
 }): Promise<Notification[]> => {
   try {
-    const response = await apiClient.get('/api/notifications', { params });
-    return response.data.data || response.data;
+    const queryParams = new URLSearchParams();
+    if (params?.isRead !== undefined) queryParams.append('isRead', params.isRead.toString());
+    if (params?.type) queryParams.append('type', params.type);
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    
+    const response = await apiClient.get(`/api/user-notifications?${queryParams.toString()}`);
+    console.log('✅ Kullanıcı bildirimleri başarıyla alındı:', response.data.length);
+    return response.data;
   } catch (error: any) {
-    console.error('Get notifications error:', error.response?.data || error.message);
-    throw error.response?.data || new Error('Bildirimler alınamadı');
+    console.error('❌ Bildirimler alınırken hata:', error.response?.data || error.message);
+    throw new Error('Bildirimler alınamadı');
   }
 };
 
 export const markNotificationAsRead = async (id: string): Promise<Notification> => {
   try {
-    const response = await apiClient.put(`/api/notifications/${id}/read`);
-    return response.data.data || response.data;
+    const response = await apiClient.put(`/api/user-notifications/${id}`, { isRead: true });
+    console.log('✅ Bildirim okundu olarak işaretlendi:', id);
+    return response.data;
   } catch (error: any) {
-    console.error(`Mark notification as read ${id} error:`, error.response?.data || error.message);
-    throw error.response?.data || new Error('Bildirim okundu olarak işaretlenemedi');
+    console.error('❌ Bildirim okundu olarak işaretlenirken hata:', error.response?.data || error.message);
+    throw new Error('Bildirim güncellenemedi');
   }
 };
 
@@ -452,11 +552,12 @@ export const markAllNotificationsAsRead = async (): Promise<{ message: string }>
 
 export const deleteNotification = async (id: string): Promise<{ message: string }> => {
   try {
-    const response = await apiClient.delete(`/api/notifications/${id}`);
+    const response = await apiClient.delete(`/api/user-notifications/${id}`);
+    console.log('✅ Bildirim başarıyla silindi:', id);
     return response.data;
   } catch (error: any) {
-    console.error(`Delete notification ${id} error:`, error.response?.data || error.message);
-    throw error.response?.data || new Error('Bildirim silinemedi');
+    console.error('❌ Bildirim silinirken hata:', error.response?.data || error.message);
+    throw new Error('Bildirim silinemedi');
   }
 };
 
@@ -491,10 +592,14 @@ export type ReservationData = Omit<Reservation, '_id' | 'createdAt' | 'updatedAt
 
 export const getFacilities = async (): Promise<Facility[]> => {
   try {
+    console.log('🏢 Tesisler yükleniyor...', API_BASE_URL);
     const response = await apiClient.get('/api/facilities');
+    console.log('✅ Tesisler API yanıtı:', response.data);
     return response.data.data || response.data;
   } catch (error: any) {
-    console.error('Get facilities error:', error.response?.data || error.message);
+    console.error('❌ Get facilities error:', error.response?.data || error.message);
+    console.error('❌ API Base URL:', API_BASE_URL);
+    console.error('❌ Error details:', error);
     throw error.response?.data || new Error('Tesisler alınamadı');
   }
 };
@@ -535,7 +640,7 @@ export const updateReservation = async (id: string, data: Partial<ReservationDat
 
 export const cancelReservation = async (id: string): Promise<Reservation> => {
   try {
-    const response = await apiClient.put(`/api/reservations/${id}/cancel`);
+    const response = await apiClient.delete(`/api/reservations/${id}`);
     return response.data.data || response.data;
   } catch (error: any) {
     console.error(`Cancel reservation ${id} error:`, error.response?.data || error.message);
@@ -554,4 +659,181 @@ export const checkApiHealth = async (): Promise<boolean> => {
   }
 };
 
-export default apiClient; 
+// ADMIN DASHBOARD API
+export interface DashboardStats {
+  users: {
+    total: number;
+    active: number;
+    inactive: number;
+  };
+  payments: {
+    total: number;
+    pending: number;
+    overdue: number;
+    collected: number;
+  };
+  maintenance: {
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+  };
+  announcements: {
+    total: number;
+    active: number;
+  };
+  reservations?: {
+    total: number;
+    pending: number;
+    approved: number;
+  };
+}
+
+export const getDashboardStats = async (): Promise<DashboardStats> => {
+  try {
+    console.log('📊 Dashboard istatistikleri getiriliyor...');
+    const response = await apiClient.get('/api/admin/dashboard-stats');
+    console.log('✅ Dashboard istatistikleri alındı:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('❌ Dashboard istatistikleri alınırken hata:', error);
+    throw new Error(error.response?.data?.message || 'Dashboard istatistikleri alınırken bir hata oluştu');
+  }
+};
+
+// KULLANICILAR API
+export interface User {
+  _id: string;
+  name: string;
+  email: string;
+  role: 'ADMIN' | 'RESIDENT';
+  apartmentNo?: string;
+  block?: string;
+  phone?: string;
+  isActive?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type UserData = Omit<User, '_id' | 'createdAt' | 'updatedAt'>;
+
+export const getUsers = async (params?: { 
+  role?: string; 
+  block?: string;
+  isActive?: boolean;
+}): Promise<User[]> => {
+  try {
+    console.log('👥 Kullanıcılar yükleniyor...');
+    const response = await apiClient.get('/api/users', { params });
+    console.log('✅ Kullanıcılar başarıyla alındı:', response.data.length);
+    return response.data.data || response.data;
+  } catch (error: any) {
+    console.error('❌ Kullanıcılar alınırken hata:', error.response?.data || error.message);
+    throw error.response?.data || new Error('Kullanıcılar alınamadı');
+  }
+};
+
+export const createUser = async (data: UserData): Promise<User> => {
+  try {
+    console.log('👤 Yeni kullanıcı oluşturuluyor:', data);
+    const response = await apiClient.post('/api/users', data);
+    console.log('✅ Kullanıcı başarıyla oluşturuldu:', response.data);
+    return response.data.data || response.data;
+  } catch (error: any) {
+    console.error('❌ Kullanıcı oluşturulurken hata:', error.response?.data || error.message);
+    throw error.response?.data || new Error('Kullanıcı oluşturulamadı');
+  }
+};
+
+export const getUserById = async (id: string): Promise<User> => {
+  try {
+    const response = await apiClient.get(`/api/users/${id}`);
+    return response.data.data || response.data;
+  } catch (error: any) {
+    console.error(`Get user ${id} error:`, error.response?.data || error.message);
+    throw error.response?.data || new Error('Kullanıcı bulunamadı');
+  }
+};
+
+export const updateUser = async (id: string, data: Partial<UserData>): Promise<User> => {
+  try {
+    console.log('👤 Kullanıcı güncelleniyor:', id, data);
+    const response = await apiClient.put(`/api/users/${id}`, data);
+    console.log('✅ Kullanıcı başarıyla güncellendi:', response.data);
+    return response.data.data || response.data;
+  } catch (error: any) {
+    console.error(`❌ Kullanıcı güncellenirken hata:`, error.response?.data || error.message);
+    throw error.response?.data || new Error('Kullanıcı güncellenemedi');
+  }
+};
+
+export const deleteUser = async (id: string): Promise<{ message: string }> => {
+  try {
+    console.log('🗑️ Kullanıcı siliniyor:', id);
+    const response = await apiClient.delete(`/api/users/${id}`);
+    console.log('✅ Kullanıcı başarıyla silindi');
+    return response.data;
+  } catch (error: any) {
+    console.error(`❌ Kullanıcı silinirken hata:`, error.response?.data || error.message);
+    throw error.response?.data || new Error('Kullanıcı silinemedi');
+  }
+};
+
+// NOTIFICATION API
+export interface SentNotification {
+  _id: string;
+  type: string;
+  title: string;
+  message: string;
+  targetRole: string;
+  targetApartment?: string;
+  targetBlock?: string;
+  priority: string;
+  senderName?: string;
+  targetCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getSentNotifications = async (params?: {
+  type?: string;
+  targetRole?: string;
+  limit?: number;
+}): Promise<SentNotification[]> => {
+  try {
+    console.log('📋 Gönderilen bildirimler getiriliyor...');
+    const response = await apiClient.get('/api/notifications/sent', { params });
+    console.log('✅ Gönderilen bildirimler alındı:', response.data.length);
+    return response.data.data || response.data;
+  } catch (error: any) {
+    console.error('❌ Gönderilen bildirimler alınırken hata:', error);
+    throw new Error(error.response?.data?.message || 'Gönderilen bildirimler alınırken bir hata oluştu');
+  }
+};
+
+export const sendSocketNotification = async (notificationData: {
+  type: string;
+  title: string;
+  message: string;
+  targetRoles?: string[];
+  targetApartments?: string[];
+  targetBlocks?: string[];
+  targetRole?: string;
+  targetApartment?: string;
+  targetBlock?: string;
+  priority: string;
+  senderName?: string;
+  timestamp?: string;
+}): Promise<{ success: boolean; message: string; targetCount: number }> => {
+  try {
+    console.log('📤 Socket bildirim gönderiliyor:', notificationData);
+    const response = await apiClient.post('/api/notifications/send-socket', notificationData);
+    console.log('✅ Socket bildirim yanıtı:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('❌ Socket bildirim gönderme hatası:', error);
+    throw new Error(error.response?.data?.message || 'Bildirim gönderilirken bir hata oluştu');
+  }
+};
+
+export default apiClient;

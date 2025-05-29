@@ -6,17 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
 import AdminPageGuard from '../../components/AdminPageGuard';
-import { apiServices } from '../../utils/api-services';
-import { PaymentStorage, Payment as OfflinePayment } from '../../services/offlineStorage';
-
-// Ödeme tipi - offlineStorage'dan gelen interface'i genişletiyoruz
-interface Payment extends OfflinePayment {
-  _id?: string;
-  userId?: string;
-  residentName?: string;
-  type?: string;
-  block?: string;
-}
+import { getPayments, createPayment, updatePayment, deletePayment, makePayment, Payment, PaymentData } from '../../services/api';
 
 export default function AdminPaymentsScreen() {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -38,15 +28,17 @@ export default function AdminPaymentsScreen() {
     apartmentNo: string;
     amount: string;
     dueDate: string;
-    status: 'PENDING' | 'PAID' | 'OVERDUE';
+    status: 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED';
     paymentMethod?: 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
     description: string;
+    type: 'DUES' | 'INVOICE' | 'OTHER';
   }>({
     apartmentNo: '',
     amount: '',
     dueDate: '',
     status: 'PENDING',
     description: '',
+    type: 'DUES',
   });
 
   // Yetki kontrolü
@@ -68,20 +60,13 @@ export default function AdminPaymentsScreen() {
 
   const loadPayments = async () => {
     try {
-      const data = await PaymentStorage.getAll();
-      // OfflinePayment'ı Payment'a dönüştür
-      const convertedData: Payment[] = data.map(payment => ({
-        ...payment,
-        _id: payment.id,
-        userId: payment.id,
-        type: 'MONTHLY_FEE',
-        residentName: `Daire ${payment.apartmentNo}`,
-        block: 'A'
-      }));
-      setPayments(convertedData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    } catch (error) {
-      console.error('Ödemeler yüklenirken hata:', error);
-      Alert.alert('Hata', 'Ödemeler yüklenirken bir hata oluştu');
+      console.log('💳 Ödemeler yükleniyor...');
+      const data = await getPayments();
+      setPayments(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      console.log('✅ Ödemeler başarıyla yüklendi:', data.length);
+    } catch (error: any) {
+      console.error('❌ Ödemeler yüklenirken hata:', error);
+      Alert.alert('Hata', error.message || 'Ödemeler yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -102,8 +87,8 @@ export default function AdminPaymentsScreen() {
         payment =>
           payment.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           payment.amount.toString().includes(searchQuery.toLowerCase()) ||
-          payment.residentName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          payment.id.toLowerCase().includes(searchQuery.toLowerCase())
+          payment.apartmentNo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          payment._id.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
     
@@ -134,8 +119,9 @@ export default function AdminPaymentsScreen() {
 
   const handleEditPayment = () => {
     closeMenu();
-    // Düzenleme işlevi gelecek
-    Alert.alert('Bilgi', 'Düzenleme işlevi yakında eklenecek.');
+    if (selectedPayment) {
+      openModal(selectedPayment);
+    }
   };
 
   const handleDeletePayment = async () => {
@@ -156,12 +142,13 @@ export default function AdminPaymentsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await PaymentStorage.delete(selectedPayment.id);
+              console.log('🗑️ Ödeme siliniyor:', selectedPayment._id);
+              await deletePayment(selectedPayment._id);
               Alert.alert('Başarılı', 'Aidat kaydı başarıyla silindi.');
               loadPayments();
-            } catch (error) {
-              console.error('Aidat silme hatası:', error);
-              Alert.alert('Hata', 'Aidat kaydı silinirken bir hata oluştu.');
+            } catch (error: any) {
+              console.error('❌ Aidat silme hatası:', error);
+              Alert.alert('Hata', error.message || 'Aidat kaydı silinirken bir hata oluştu.');
             }
           }
         }
@@ -178,27 +165,19 @@ export default function AdminPaymentsScreen() {
     if (!selectedPayment) return;
     
     try {
-      const paymentInfo = {
-        paymentMethod,
-        paymentDate: new Date().toISOString()
-      };
-      
-      await PaymentStorage.update(selectedPayment.id, {
-        status: 'PAID',
-        paymentDate: paymentInfo.paymentDate,
-        paymentMethod: paymentInfo.paymentMethod as 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD'
-      });
+      console.log('💰 Ödeme yapılıyor:', selectedPayment._id, paymentMethod);
+      await makePayment(selectedPayment._id, paymentMethod);
       
       Alert.alert('Başarılı', 'Aidat ödemesi başarıyla kaydedildi.');
       loadPayments();
       setPaymentModalVisible(false);
-    } catch (error) {
-      console.error('Ödeme kaydetme hatası:', error);
-      Alert.alert('Hata', 'Aidat ödemesi kaydedilirken bir hata oluştu.');
+    } catch (error: any) {
+      console.error('❌ Ödeme kaydetme hatası:', error);
+      Alert.alert('Hata', error.message || 'Aidat ödemesi kaydedilirken bir hata oluştu.');
     }
   };
 
-  const getStatusChip = (status: 'PENDING' | 'PAID' | 'OVERDUE') => {
+  const getStatusChip = (status: 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED') => {
     let color = '';
     let text = '';
 
@@ -214,6 +193,10 @@ export default function AdminPaymentsScreen() {
       case 'OVERDUE':
         color = Colors.error;
         text = 'Gecikmiş';
+        break;
+      case 'CANCELLED':
+        color = Colors.lightGray;
+        text = 'İptal';
         break;
       default:
         color = Colors.lightGray;
@@ -255,6 +238,7 @@ export default function AdminPaymentsScreen() {
         status: payment.status,
         paymentMethod: payment.paymentMethod,
         description: payment.description || '',
+        type: payment.type || 'DUES',
       });
     } else {
       setEditingPayment(null);
@@ -264,6 +248,7 @@ export default function AdminPaymentsScreen() {
         dueDate: '',
         status: 'PENDING',
         description: '',
+        type: 'DUES',
       });
     }
     setModalVisible(true);
@@ -278,6 +263,7 @@ export default function AdminPaymentsScreen() {
       dueDate: '',
       status: 'PENDING',
       description: '',
+      type: 'DUES',
     });
   };
 
@@ -294,21 +280,23 @@ export default function AdminPaymentsScreen() {
     }
 
     try {
-      const paymentData = {
+      const paymentData: PaymentData = {
+        userId: 'admin', // Admin tarafından oluşturulan ödemeler için
         apartmentNo: formData.apartmentNo.trim(),
         amount: amount,
-        dueDate: new Date(formData.dueDate).toISOString(),
+        dueDate: formData.dueDate,
         status: formData.status,
         paymentMethod: formData.paymentMethod,
         description: formData.description.trim() || `Aidat - ${formData.apartmentNo}`,
+        type: formData.type,
         ...(formData.status === 'PAID' && { paymentDate: new Date().toISOString() }),
       };
 
       if (editingPayment) {
-        await PaymentStorage.update(editingPayment.id, paymentData);
+        await updatePayment(editingPayment._id, paymentData);
         Alert.alert('Başarılı', 'Ödeme güncellendi');
       } else {
-        await PaymentStorage.create(paymentData);
+        await createPayment(paymentData);
         Alert.alert('Başarılı', 'Ödeme oluşturuldu');
       }
 
@@ -320,26 +308,12 @@ export default function AdminPaymentsScreen() {
     }
   };
 
-  const markAsPaidOffline = async (payment: Payment) => {
-    try {
-      await PaymentStorage.update(payment.id, {
-        status: 'PAID',
-        paymentDate: new Date().toISOString(),
-        paymentMethod: 'CASH',
-      });
-      loadPayments();
-      Alert.alert('Başarılı', 'Ödeme alındı olarak işaretlendi');
-    } catch (error) {
-      console.error('Ödeme durumu güncellenirken hata:', error);
-      Alert.alert('Hata', 'Ödeme durumu güncellenirken bir hata oluştu');
-    }
-  };
-
   const getStatusText = (status: string) => {
     switch (status) {
       case 'PENDING': return 'Bekliyor';
       case 'PAID': return 'Ödendi';
       case 'OVERDUE': return 'Gecikmiş';
+      case 'CANCELLED': return 'İptal';
       default: return status;
     }
   };
@@ -487,9 +461,9 @@ export default function AdminPaymentsScreen() {
                         <DataTable.Cell>
                           <View>
                             <Text style={styles.paymentDescription}>{payment.description}</Text>
-                            {payment.residentName && (
+                            {payment.apartmentNo && (
                               <Text style={styles.paymentResident}>
-                                {payment.residentName} {payment.block && payment.apartmentNo ? `(${payment.block}-${payment.apartmentNo})` : ''}
+                                {payment.apartmentNo}
                               </Text>
                             )}
                           </View>
@@ -660,6 +634,7 @@ export default function AdminPaymentsScreen() {
                             { text: 'Bekliyor', onPress: () => setFormData({ ...formData, status: 'PENDING' }) },
                             { text: 'Ödendi', onPress: () => setFormData({ ...formData, status: 'PAID' }) },
                             { text: 'Gecikmiş', onPress: () => setFormData({ ...formData, status: 'OVERDUE' }) },
+                            { text: 'İptal Edildi', onPress: () => setFormData({ ...formData, status: 'CANCELLED' }) },
                             { text: 'İptal', style: 'cancel' },
                           ]
                         );

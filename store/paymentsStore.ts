@@ -5,7 +5,8 @@ import {
   updatePayment as apiUpdatePayment,
   // getPaymentById as apiGetPaymentById, // get().payments.find kullanılabilir
   Payment, // services/api.ts'den import edildi
-  PaymentData // services/api.ts'den import edildi
+  PaymentData, // services/api.ts'den import edildi
+  makePayment
 } from '../services/api';
 // AsyncStorage tabanlı storage importu kaldırılıyor veya sadece diğer amaçlar için tutuluyor.
 // import storage from '../utils/storage'; 
@@ -22,8 +23,10 @@ interface PaymentsState {
   payments: Payment[];
   isLoading: boolean;
   error: string | null;
-  fetchPayments: (params: { userId: string; status?: string; apartmentNo?: string }) => Promise<void>; // userId zorunlu hale geldi
-  markAsPaid: (paymentId: string, method: string, paymentDate?: string) => Promise<void>; // makePayment -> markAsPaid
+  fetchPayments: (params?: { userId?: string; status?: string; apartmentNo?: string; type?: string }) => Promise<void>;
+  markAsPaid: (id: string, paymentMethod?: string) => Promise<void>;
+  processPayment: (id: string, paymentMethod?: string) => Promise<void>;
+  clearError: () => void;
   getPaymentById: (id: string) => Payment | undefined;
   // refreshFromCache: () => Promise<void>; // fetchPayments içinde ele alınabilir
 }
@@ -34,95 +37,147 @@ export const usePaymentsStore = create<PaymentsState>((set, get) => ({
   error: null,
   
   fetchPayments: async (params) => {
-    console.log("fetchPayments called with params:", JSON.stringify(params)); // Debug log
-    if (!params.userId) {
-      console.warn('fetchPayments called without userId');
-      set({ isLoading: false, error: 'Kullanıcı kimliği olmadan aidatlar alınamaz.' });
-      return;
-    }
     try {
       set({ isLoading: true, error: null });
-      const netInfo = await NetInfo.fetch();
+      console.log('📋 Ödemeler getiriliyor...', params);
       
-      if (netInfo.isConnected) {
-        console.log("Making API request to get payments for userId:", params.userId);
-        const remotePayments = await apiGetPayments(params);
-        console.log("Received payments from API:", remotePayments.length);
-        set({ payments: remotePayments, isLoading: false });
-        await cachePaymentsDb(remotePayments, params.userId); // SQLite cache güncelle
-      } else {
-        console.log('Offline mode: Fetching payments from SQLite cache');
-        const cachedPayments = await getCachedPaymentsDb(params.userId); // SQLite cache'den oku
-        if (cachedPayments) {
-          set({ payments: cachedPayments, isLoading: false });
-        } else {
-          set({ isLoading: false, error: 'Çevrimdışı ve önbellekte aidat bulunamadı.' });
-        }
-      }
+      const payments = await apiGetPayments(params || {});
+      console.log('✅ Ödemeler başarıyla getirildi:', payments.length);
+      
+      set({ payments, isLoading: false });
     } catch (error: any) {
-      console.error('Error fetching payments:', error);
-      set({ isLoading: false, error: error.message || 'Aidat bilgileri alınamadı' });
-      // Hata durumunda da SQLite önbelleğinden okumayı deneyebiliriz
-      try {
-        const cachedPayments = await getCachedPaymentsDb(params.userId);
-        if (cachedPayments) set({ payments: cachedPayments });
-      } catch (cacheError) {
-        console.error('Error fetching from SQLite cache after primary error:', cacheError);
-      }
+      console.error('❌ Ödemeler getirme hatası:', error);
+      set({ 
+        error: error.message || 'Ödemeler yüklenirken hata oluştu',
+        isLoading: false 
+      });
     }
   },
   
-  markAsPaid: async (paymentId, method, paymentDate) => {
-    const paymentToUpdate = get().payments.find(p => p._id === paymentId);
-    if (!paymentToUpdate) {
-      set({ error: 'Güncellenecek ödeme bulunamadı.'});
-      return;
-    }
-
-    const updatedPaymentData: Partial<PaymentData> = {
-      status: 'PAID',
-      paymentMethod: method as Payment['paymentMethod'],
-      paymentDate: paymentDate || format(new Date(), 'yyyy-MM-dd'),
-    };
-
-    const currentUser = useUserStore.getState().user;
-    if (!currentUser) {
-        set({ error: 'Ödeme güncellemesi için kullanıcı bulunamadı.'});
-        return;
-    }
-
+  markAsPaid: async (id: string, paymentMethod = 'USER_MARKED_AS_PAID') => {
     try {
-      set({ isLoading: true, error: null });
+      console.log('✅ Ödeme işaretleniyor:', id, paymentMethod);
+      
+      // İnternet bağlantısını kontrol et
       const netInfo = await NetInfo.fetch();
-
+      
       if (netInfo.isConnected) {
-        const updatedPayment = await apiUpdatePayment(paymentId, updatedPaymentData);
-        const newPayments = get().payments.map((p) => (p._id === paymentId ? updatedPayment : p));
-        set({
-          payments: newPayments,
-          isLoading: false,
+        // Online: API'ye gönder
+        await apiUpdatePayment(id, {
+          status: 'PAID',
+          paymentMethod: paymentMethod as any,
+          paymentDate: new Date().toISOString()
         });
-        await cachePaymentsDb(newPayments, currentUser.id); // SQLite cache güncelle
+        
+        // Local state'i güncelle
+        const { payments } = get();
+        const updatedPayments = payments.map(payment =>
+          payment._id === id
+            ? { 
+                ...payment, 
+                status: 'PAID' as Payment['status'],
+                paymentMethod: paymentMethod as Payment['paymentMethod'],
+                paymentDate: new Date().toISOString()
+              }
+            : payment
+        );
+        set({ payments: updatedPayments });
+        
+        console.log('✅ Ödeme durumu güncellendi (online)');
       } else {
-        console.log('Offline mode: Queuing payment update and updating local SQLite cache');
-        const locallyUpdatedPayment = { ...paymentToUpdate, ...updatedPaymentData } as Payment;
-        const newPayments = get().payments.map((p) => (p._id === paymentId ? locallyUpdatedPayment : p));
-        set({
-          payments: newPayments,
-          isLoading: false,
-        });
-        await cachePaymentsDb(newPayments, currentUser.id); // SQLite cache güncelle
+        // Offline: Yerel değişiklikleri kaydet ve kuyruğa ekle
+        const { payments } = get();
+        const updatedPayments = payments.map(payment =>
+          payment._id === id
+            ? { 
+                ...payment, 
+                status: 'PAID' as Payment['status'],
+                paymentMethod: paymentMethod as Payment['paymentMethod'],
+                paymentDate: new Date().toISOString()
+              }
+            : payment
+        );
+        set({ payments: updatedPayments });
+        
+        // API kuyruğuna ekle
         await apiQueue.add({
-          url: `/api/payments/${paymentId}`,
+          url: `/payments/${id}`,
           method: 'put',
-          data: updatedPaymentData,
+          data: {
+            status: 'PAID',
+            paymentMethod: paymentMethod,
+            paymentDate: new Date().toISOString()
+          },
         });
+        
+        console.log('✅ Ödeme durumu güncellendi (offline, kuyrukta)');
       }
     } catch (error: any) {
-      console.error('Error marking payment as paid:', error);
-      set({ isLoading: false, error: error.message || 'Ödeme güncellenemedi' });
+      console.error('❌ Ödeme işaretleme hatası:', error);
+      set({ error: error.message || 'Ödeme durumu güncellenirken hata oluştu' });
+      throw error;
     }
   },
+  
+  processPayment: async (id: string, paymentMethod = 'ONLINE') => {
+    try {
+      console.log('💰 Ödeme işlemi başlatılıyor:', id, paymentMethod);
+      set({ isLoading: true, error: null });
+      
+      // İnternet bağlantısını kontrol et
+      const netInfo = await NetInfo.fetch();
+      
+      if (netInfo.isConnected) {
+        // Online: Gerçek ödeme işlemi
+        const updatedPayment = await makePayment(id, paymentMethod);
+        
+        // Local state'i güncelle
+        const { payments } = get();
+        const updatedPayments = payments.map(payment =>
+          payment._id === id ? updatedPayment : payment
+        );
+        set({ payments: updatedPayments, isLoading: false });
+        
+        console.log('✅ Ödeme işlemi tamamlandı (online)');
+      } else {
+        // Offline: Yerel değişiklikleri kaydet ve kuyruğa ekle
+        const { payments } = get();
+        const updatedPayments = payments.map(payment =>
+          payment._id === id
+            ? { 
+                ...payment, 
+                status: 'PAID' as Payment['status'],
+                paymentMethod: paymentMethod as Payment['paymentMethod'],
+                paymentDate: new Date().toISOString()
+              }
+            : payment
+        );
+        set({ payments: updatedPayments, isLoading: false });
+        
+        // API kuyruğuna ekle
+        await apiQueue.add({
+          url: `/payments/${id}`,
+          method: 'put',
+          data: {
+            status: 'PAID',
+            paymentMethod: paymentMethod,
+            paymentDate: new Date().toISOString()
+          },
+        });
+        
+        console.log('✅ Ödeme işlemi tamamlandı (offline, kuyrukta)');
+      }
+    } catch (error: any) {
+      console.error('❌ Ödeme işlemi hatası:', error);
+      set({ 
+        error: error.message || 'Ödeme işlemi sırasında hata oluştu',
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+  
+  clearError: () => set({ error: null }),
   
   getPaymentById: (id) => {
     return get().payments.find(payment => payment._id === id);

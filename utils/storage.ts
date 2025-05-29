@@ -176,6 +176,30 @@ export const storage = {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     await this.removeUser();
   },
+
+  // Cache temizleme fonksiyonu
+  async clearAllCache() {
+    try {
+      await AsyncStorage.multiRemove([
+        'maintenance_cache',
+        'payments_cache', 
+        'announcements_cache'
+      ]);
+      console.log('🧹 Tüm cache temizlendi');
+    } catch (error) {
+      console.error('Cache temizlenirken hata:', error);
+    }
+  },
+
+  // Maintenance cache'ini tamamen temizle
+  async clearMaintenanceCache() {
+    try {
+      await AsyncStorage.removeItem('maintenance_cache');
+      console.log('🧹 Maintenance cache temizlendi');
+    } catch (error) {
+      console.error('Maintenance cache temizlenirken hata:', error);
+    }
+  },
 };
 
 export default storage;

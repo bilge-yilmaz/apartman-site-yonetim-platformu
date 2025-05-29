@@ -35,7 +35,7 @@ export default function TabLayout() {
         name="index" 
         options={{
           title: 'Ana Sayfa',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
             <Ionicons name={focused ? 'home' : 'home-outline'} size={22} color={color} />
           ),
         }}
@@ -44,7 +44,7 @@ export default function TabLayout() {
         name="payments" 
         options={{
           title: 'Aidatlar',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
             <Ionicons name={focused ? 'cash' : 'cash-outline'} size={22} color={color} />
           ),
         }}
@@ -53,7 +53,7 @@ export default function TabLayout() {
         name="maintenance" 
         options={{
           title: 'Arızalar',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
             <Ionicons name={focused ? 'construct' : 'construct-outline'} size={22} color={color} />
           ),
         }}
@@ -62,7 +62,7 @@ export default function TabLayout() {
         name="reservations" 
         options={{
           title: 'Rezervasyon',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
             <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={22} color={color} />
           ),
         }}
@@ -71,7 +71,7 @@ export default function TabLayout() {
         name="announcements" 
         options={{
           title: 'Duyurular',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
             <Ionicons name={focused ? 'megaphone' : 'megaphone-outline'} size={22} color={color} />
           ),
         }}
@@ -81,7 +81,7 @@ export default function TabLayout() {
         name="profile" 
         options={{
           title: 'Profil',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
             <Ionicons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
           ),
         }}

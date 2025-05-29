@@ -1,161 +1,56 @@
 import { useState, useEffect, useCallback } from 'react';
 import React from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, Image, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, Alert, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, Card, Button, ActivityIndicator, Chip, Divider, FAB } from 'react-native-paper';
 import { router, useFocusEffect } from 'expo-router';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
-
-// Genişletilmiş MaintenanceRequest tipi
-type MaintenanceRequest = {
-  _id: string;
-  title: string;
-  description: string;
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  apartmentNo: string;
-  block: string;
-  createdBy?: string;
-  assignedTo?: string;
-  category?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-// Örnek arıza bildirimleri
-const SAMPLE_MAINTENANCE_REQUESTS: MaintenanceRequest[] = [
-  {
-    _id: '1',
-    title: 'Su Borusu Sızıntısı',
-    description: 'Mutfak lavabosunun altından su sızıyor. Acil müdahale gerekiyor.',
-    status: 'PENDING',
-    category: 'PLUMBING',
-    priority: 'HIGH',
-    apartmentNo: '101',
-    block: 'A',
-    createdBy: 'user123',
-    assignedTo: 'technician456',
-    createdAt: new Date('2025-04-25').toISOString(),
-    updatedAt: new Date('2025-04-25').toISOString()
-  },
-  {
-    _id: '2',
-    title: 'Elektrik Kesintisi',
-    description: 'Dairemizde elektrik kesintisi yaşanıyor. Sigorta atıyor.',
-    status: 'IN_PROGRESS',
-    category: 'ELECTRICAL',
-    priority: 'URGENT',
-    apartmentNo: '202',
-    block: 'B',
-    createdBy: 'user789',
-    assignedTo: 'technician456',
-    createdAt: new Date('2025-04-26').toISOString(),
-    updatedAt: new Date('2025-04-26').toISOString()
-  },
-  {
-    _id: '3',
-    title: 'Asansör Arızası',
-    description: 'B blok asansörü çalışmıyor.',
-    status: 'COMPLETED',
-    category: 'ELEVATOR',
-    priority: 'MEDIUM',
-    apartmentNo: '',
-    block: 'B',
-    createdBy: 'admin',
-    assignedTo: 'technician789',
-    createdAt: new Date('2025-04-20').toISOString(),
-    updatedAt: new Date('2025-04-22').toISOString()
-  }
-];
-
-// AsyncStorage anahtarı
-const MAINTENANCE_STORAGE_KEY = 'maintenance_requests';
+import { useMaintenanceStore, MaintenanceRequest } from '../../store/maintenance';
 
 export default function MaintenanceScreen() {
-  const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { 
+    requests, 
+    isLoading, 
+    error, 
+    fetchRequests, 
+    cancelRequest 
+  } = useMaintenanceStore();
+  
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
 
-  // Arıza bildirimlerini getir
-  const fetchRequests = async () => {
-    try {
-      setIsLoading(true);
-      console.log('Arıza bildirimleri getiriliyor...');
-      
-      // AsyncStorage'dan arıza bildirimlerini al
-      const storedData = await AsyncStorage.getItem(MAINTENANCE_STORAGE_KEY);
-      
-      if (storedData) {
-        // Eğer kayıtlı veri varsa, onu kullan
-        const parsedData = JSON.parse(storedData);
-        console.log('AsyncStorage\'dan', parsedData.length, 'arıza bildirimi alındı');
-        setRequests(parsedData);
-      } else {
-        // Kayıtlı veri yoksa, örnek verileri kullan
-        console.log('Örnek arıza bildirimleri kullanılıyor');
-        setRequests(SAMPLE_MAINTENANCE_REQUESTS);
-        // Örnek verileri AsyncStorage'a kaydet
-        await AsyncStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(SAMPLE_MAINTENANCE_REQUESTS));
-      }
-    } catch (error) {
-      console.error('Arıza bildirimleri alınırken hata:', error);
-      // Hata durumunda örnek verileri kullan
-      setRequests(SAMPLE_MAINTENANCE_REQUESTS);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  // Arıza bildirimini iptal et
-  const cancelRequest = async (id: string) => {
-    try {
-      console.log('Arıza bildirimi iptal ediliyor:', id);
-      
-      // Arıza bildirimini bul ve durumunu güncelle
-      const updatedRequests = requests.map(request => 
-        request._id === id 
-          ? { ...request, status: 'CANCELLED' as const, updatedAt: new Date().toISOString() }
-          : request
-      );
-      
-      // Güncellenmiş listeyi ayarla
-      setRequests(updatedRequests);
-      
-      // AsyncStorage'a kaydet
-      await AsyncStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(updatedRequests));
-      
-      return true;
-    } catch (error) {
-      console.error('Arıza bildirimi iptal edilirken hata:', error);
-      return false;
-    }
-  };
-
   // Sayfa ilk yüklenirken arıza bildirimlerini getir
   useEffect(() => {
-    console.log('Arıza bildirimleri ekranı yüklendi');
+    console.log('🔧 Arıza bildirimleri ekranı yüklendi');
     fetchRequests();
   }, []);
+  
+  // Requests state'ini izle
+  useEffect(() => {
+    console.log('📊 Maintenance requests state değişti:');
+    console.log('📋 Toplam arıza sayısı:', requests.length);
+    console.log('📋 Arıza verileri:', JSON.stringify(requests, null, 2));
+  }, [requests]);
   
   // Sayfa focus olduğunda arıza bildirimlerini yeniden getir
   useFocusEffect(
     useCallback(() => {
-      console.log('Arıza bildirimleri ekranı focus oldu');
+      console.log('🔧 Arıza bildirimleri ekranı focus oldu');
       fetchRequests();
       return () => {
-        console.log('Arıza bildirimleri ekranı focus kaybetti');
+        console.log('🔧 Arıza bildirimleri ekranı focus kaybetti');
       };
     }, [])
   );
 
   const onRefresh = async () => {
+    console.log('🔄 Arıza bildirimleri yenileniyor...');
     setRefreshing(true);
     await fetchRequests();
     setRefreshing(false);
+    console.log('✅ Arıza bildirimleri yenilendi');
   };
 
   const handleCancel = async (item: MaintenanceRequest) => {
@@ -169,153 +64,41 @@ export default function MaintenanceScreen() {
             text: 'İptal Et',
             style: 'destructive',
             onPress: async () => {
-              setIsLoading(true);
-              
-              // Arıza bildirimini güncelle
-              const updatedRequests = requests.map(req =>
-                req._id === item._id
-                  ? { ...req, status: 'CANCELLED' as const, updatedAt: new Date().toISOString() }
-                  : req
-              );
-              
-              // AsyncStorage'a kaydet
-              await AsyncStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(updatedRequests));
-              
-              // State'i güncelle
-              setRequests(updatedRequests);
-              setIsLoading(false);
-              
+              try {
+                await cancelRequest(item._id);
               Alert.alert('Başarılı', 'Arıza bildirimi iptal edildi.');
+              } catch (error) {
+                console.error('Arıza bildirimi iptal edilirken hata:', error);
+                Alert.alert('Hata', 'Arıza bildirimi iptal edilirken bir hata oluştu.');
+              }
             },
           },
         ]
       );
     } catch (error) {
       console.error('Arıza bildirimi iptal edilirken hata:', error);
-      setIsLoading(false);
       Alert.alert('Hata', 'Arıza bildirimi iptal edilirken bir hata oluştu.');
     }
   };
 
-  // İptal edilen arıza bildirimlerini sil
-  const handleDeleteCancelled = async () => {
-    // İptal edilmiş arıza bildirimleri var mı kontrol et
-    const cancelledRequests = requests.filter(req => req.status === 'CANCELLED');
-    
-    if (cancelledRequests.length === 0) {
-      Alert.alert('Bilgi', 'İptal edilmiş arıza bildirimi bulunmuyor.');
-      return;
-    }
-    
-    Alert.alert(
-      'İptal Edilenleri Sil',
-      `${cancelledRequests.length} adet iptal edilmiş arıza bildirimini silmek istediğinize emin misiniz?`,
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Sil',
-          style: 'destructive',
-          onPress: async () => {
-            setIsLoading(true);
-            
-            // İptal edilmemiş arıza bildirimlerini filtrele
-            const filteredRequests = requests.filter(req => req.status !== 'CANCELLED');
-            
-            // AsyncStorage'a kaydet
-            await AsyncStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(filteredRequests));
-            
-            // State'i güncelle
-            setRequests(filteredRequests);
-            setIsLoading(false);
-            
-            Alert.alert('Başarılı', `${cancelledRequests.length} adet iptal edilmiş arıza bildirimi silindi.`);
-          },
-        },
-      ]
-    );
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'LOW':
-        return '#4CAF50';
-      case 'MEDIUM':
-        return '#FFC107';
-      case 'HIGH':
-        return '#FF9800';
-      case 'URGENT':
-        return '#F44336';
-      default:
-        return '#757575';
-    }
-  };
-
-  const getPriorityText = (priority: string) => {
-    switch (priority) {
-      case 'LOW':
-        return 'Düşük';
-      case 'MEDIUM':
-        return 'Orta';
-      case 'HIGH':
-        return 'Yüksek';
-      case 'URGENT':
-        return 'Acil';
-      default:
-        return priority;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return '#FFC107';
-      case 'IN_PROGRESS':
-        return '#2196F3';
-      case 'COMPLETED':
-        return '#4CAF50';
-      case 'CANCELLED':
-        return '#757575';
-      default:
-        return '#757575';
-    }
-  };
-
-    const getStatusText = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return 'Bekliyor';
-      case 'IN_PROGRESS':
-        return 'İşlemde';
-      case 'COMPLETED':
-        return 'Tamamlandı';
-      case 'CANCELLED':
-        return 'İptal Edildi';
-      default:
-        return status;
-    }
-  };
-  
-  // Kategori adını Türkçe'ye çevirme
   const getCategoryText = (category?: string) => {
-    if (!category) return '';
-    
-    switch (category.toUpperCase()) {
-      case 'PLUMBING': return 'Su Tesisatı';
-      case 'ELECTRICAL': return 'Elektrik';
+    switch (category) {
+      case 'PLUMBING': return 'Tesisatçı';
+      case 'ELECTRICAL': return 'Elektrikçi';
+      case 'HVAC': return 'Klima/Isıtma';
+      case 'STRUCTURAL': return 'Yapısal';
       case 'ELEVATOR': return 'Asansör';
-      case 'HEATING': return 'Isıtma';
-      case 'GENERAL': return 'Genel';
-      default: return category;
+      case 'OTHER': return 'Diğer';
+      default: return 'Belirtilmemiş';
     }
   };
 
-  // Filter maintenance requests based on active tab
-  const activeRequests = requests.filter(
-    req => req.status === 'PENDING' || req.status === 'IN_PROGRESS'
+  // Aktif ve tamamlanan istekleri filtrele
+  const activeRequests = requests.filter(req => 
+    req.status === 'PENDING' || req.status === 'IN_PROGRESS'
   );
-  
-  const completedRequests = requests.filter(
-    req => req.status === 'COMPLETED' || req.status === 'CANCELLED'
+  const completedRequests = requests.filter(req => 
+    req.status === 'COMPLETED' || req.status === 'CANCELLED'
   );
 
   const displayRequests = activeTab === 'active' ? activeRequests : completedRequests;
@@ -328,10 +111,10 @@ export default function MaintenanceScreen() {
       </View>
       
       <ScrollView 
-        style={styles.container}
+        style={styles.scrollContainer}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
       >
-        <View style={styles.header}>
+        <View style={styles.contentHeader}>
           <View>
             <Text style={styles.title}>Arıza Bildirimleri</Text>
             <Text style={styles.subtitle}>Site içerisindeki arızaları bildirebilirsiniz</Text>
@@ -374,6 +157,15 @@ export default function MaintenanceScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {error && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Hata: {error}</Text>
+            <Button mode="outlined" onPress={fetchRequests}>
+              Tekrar Dene
+            </Button>
+          </View>
+        )}
       
         {isLoading ? (
           <View style={styles.loadingContainer}>
@@ -462,7 +254,7 @@ export default function MaintenanceScreen() {
                       <View style={styles.detail}>
                         <MaterialIcons name="location-on" size={18} color={Colors.primary} />
                         <Text style={styles.detailText}>
-                          {item.block || '-'}-{item.apartmentNo || '-'}
+                          {item.apartmentNo || '-'}
                         </Text>
                       </View>
                       
@@ -520,27 +312,14 @@ export default function MaintenanceScreen() {
                 </Card>
               );
             })}
-            
-            {activeTab === 'completed' && completedRequests.filter(req => req.status === 'CANCELLED').length > 0 && (
-              <Button 
-                mode="text" 
-                onPress={handleDeleteCancelled}
-                style={styles.deleteButton}
-                icon="delete-sweep"
-                textColor={Colors.error}
-              >
-                İptal Edilenleri Sil
-              </Button>
-            )}
           </View>
         )}
       </ScrollView>
       
       <FAB
-        style={styles.fab}
         icon="plus"
+        style={styles.fab}
         onPress={() => router.push('/maintenance/create')}
-        color="white"
       />
     </View>
   );
@@ -549,290 +328,216 @@ export default function MaintenanceScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#f5f5f5',
   },
   safeArea: {
-    height: 35,
-    backgroundColor: Colors.white,
+    height: 44,
+    backgroundColor: Colors.primary,
   },
   header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: Colors.white,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: Colors.black,
+    color: '#fff',
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  contentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#fff',
+    marginBottom: 10,
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#2c3e50',
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#7f8c8d',
-    marginTop: 6,
-    marginBottom: 12,
-  },
-  newButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    elevation: 3,
-  },
-  loadingContainer: {
-    padding: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    padding: 32,
-    margin: 16,
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  emptyIconContainer: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  emptyImage: {
-    width: 120,
-    height: 120,
-    marginBottom: 24,
-  },
-  emptyTitle: {
-    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 12,
   },
-  emptySubText: {
-    fontSize: 16,
+  subtitle: {
+    fontSize: 14,
     color: '#666',
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 22,
+    marginTop: 4,
   },
-  createButton: {
-    marginTop: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    elevation: 4,
+  newButton: {
     backgroundColor: Colors.primary,
   },
   tabContainer: {
     flexDirection: 'row',
-    marginHorizontal: 16,
-    marginVertical: 16,
-    borderRadius: 10,
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#eee',
-    elevation: 2,
   },
   tab: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#f8f9fa',
   },
   activeTab: {
     backgroundColor: Colors.primary,
   },
   tabText: {
-    color: '#7f8c8d',
+    fontSize: 14,
     fontWeight: '500',
-    fontSize: 15,
-    textAlign: 'center',
+    color: '#7f8c8d',
   },
   activeTabText: {
     color: '#fff',
-    fontWeight: '600',
   },
-  maintenanceContainer: {
-    margin: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 16,
-    color: '#2c3e50',
-  },
-  maintenanceCard: {
-    marginBottom: 16,
-    elevation: 2,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-    borderLeftWidth: 5,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  detail: {
-    flexDirection: 'row',
+  errorContainer: {
+    margin: 20,
+    padding: 20,
+    backgroundColor: '#ffebee',
+    borderRadius: 8,
     alignItems: 'center',
   },
-  detailText: {
-    marginLeft: 8,
-    color: '#555',
-    fontSize: 14,
+  errorText: {
+    color: '#c62828',
+    marginBottom: 10,
   },
-  headerContainer: {
-    paddingBottom: 16,
-  },
-  headerTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 50,
   },
-  sectionHeaderTitle: {
-    fontSize: 24,
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+    paddingHorizontal: 20,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
+    marginBottom: 8,
   },
-  headerSubtitle: {
+  emptySubText: {
     fontSize: 14,
     color: '#666',
-    marginTop: 4,
+    textAlign: 'center',
+    marginBottom: 20,
   },
-  deleteButton: {
-    marginVertical: 8,
-    alignSelf: 'center',
+  createButton: {
+    backgroundColor: Colors.primary,
   },
-  deleteButtonLabel: {
-    fontSize: 12,
-    color: '#F44336',
+  maintenanceContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 100,
   },
-  listContent: {
-    padding: 16,
-    paddingBottom: 80, // FAB için alan bırak
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 15,
   },
-  card: {
-    marginBottom: 16,
-    borderRadius: 12,
-    elevation: 3,
+  maintenanceCard: {
+    marginBottom: 15,
+    borderLeftWidth: 4,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: 10,
   },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    flex: 1,
-    marginRight: 8,
     color: '#333',
+    flex: 1,
+    marginRight: 10,
   },
   statusChip: {
     height: 28,
-    borderRadius: 14,
   },
   statusText: {
-    color: 'white',
     fontSize: 12,
-    fontWeight: 'bold',
-  },
-  description: {
-    fontSize: 16,
-    marginBottom: 16,
-    color: '#333',
-    lineHeight: 22,
+    fontWeight: '500',
+    color: '#fff',
   },
   divider: {
-    marginVertical: 12,
-    height: 1,
-    backgroundColor: '#e0e0e0',
+    marginVertical: 10,
   },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  infoLabel: {
+  description: {
     fontSize: 14,
     color: '#666',
-    marginRight: 4,
+    lineHeight: 20,
+    marginBottom: 15,
   },
-  infoValue: {
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  detail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  detailText: {
     fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
+    color: '#666',
+    marginLeft: 5,
   },
   tagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'center',
-    marginBottom: 12,
-    marginTop: 4,
     gap: 8,
+    marginBottom: 15,
   },
   priorityChip: {
-    height: 32,
-    borderRadius: 16,
-    paddingHorizontal: 8,
+    height: 28,
   },
   chipText: {
-    color: 'white',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
+    color: '#fff',
   },
   categoryChip: {
-    height: 32,
-    borderRadius: 16,
+    height: 28,
     borderColor: Colors.primary,
-    paddingHorizontal: 8,
   },
   categoryText: {
+    fontSize: 12,
     color: Colors.primary,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  date: {
-    fontSize: 14,
-    color: '#666',
   },
   cancelButton: {
-    marginTop: 12,
     borderColor: Colors.error,
-    borderRadius: 8,
+    marginTop: 10,
   },
   fab: {
     position: 'absolute',
     margin: 16,
     right: 0,
-    bottom: 65,
+    bottom: 0,
     backgroundColor: Colors.primary,
-    borderRadius: 28,
-    elevation: 6,
   },
 });

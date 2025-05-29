@@ -6,12 +6,56 @@ import { decodeJwtPayload } from './base64';
 
 // API URL - Gerçek uygulamada doğru API URL'sini ortama göre ayarla
 // Android emülatör için 10.0.2.2 IP adresini kullan
-const API_URL = 'http://10.0.2.2:3000';
+const API_URL = 'http://10.192.90.95:3000';
 // const API_URL = 'http://localhost:3000'; // iOS simülatör için
 // const API_URL = 'http://127.0.0.1:3000';
 // const API_URL = 'http://192.168.1.28:3000'; // Fiziksel cihaz için
 
 console.log('Auth servisi API URL:', API_URL);
+
+// Token'ın süresini kontrol etme fonksiyonu
+export const isTokenExpired = (token: string): boolean => {
+  try {
+    const payload = decodeJwtPayload(token);
+    if (!payload || !payload.exp) {
+      console.log('Token payload\'ında exp alanı bulunamadı');
+      return true;
+    }
+    
+    const currentTime = Math.floor(Date.now() / 1000);
+    const isExpired = payload.exp < currentTime;
+    
+    console.log('Token süresi kontrolü:', {
+      currentTime,
+      expTime: payload.exp,
+      isExpired,
+      remainingTime: payload.exp - currentTime
+    });
+    
+    return isExpired;
+  } catch (error) {
+    console.error('Token süre kontrolü hatası:', error);
+    return true;
+  }
+};
+
+// Token'ın yakında sona ereceğini kontrol etme (5 dakika kala)
+export const isTokenExpiringSoon = (token: string): boolean => {
+  try {
+    const payload = decodeJwtPayload(token);
+    if (!payload || !payload.exp) {
+      return true;
+    }
+    
+    const currentTime = Math.floor(Date.now() / 1000);
+    const fiveMinutesFromNow = currentTime + (5 * 60); // 5 dakika
+    
+    return payload.exp < fiveMinutesFromNow;
+  } catch (error) {
+    console.error('Token yakında sona erme kontrolü hatası:', error);
+    return true;
+  }
+};
 
 // JWT token'ını decode etme fonksiyonu
 export const decodeToken = (token: string): User | null => {
@@ -21,6 +65,12 @@ export const decodeToken = (token: string): User | null => {
     // Token formatını kontrol et
     if (!token || !token.includes('.')) {
       console.error('Geçersiz token formatı');
+      return null;
+    }
+    
+    // Token süresini kontrol et
+    if (isTokenExpired(token)) {
+      console.error('Token süresi dolmuş');
       return null;
     }
     
@@ -56,6 +106,99 @@ export const decodeToken = (token: string): User | null => {
   } catch (error) {
     console.error('Token decode error:', error);
     return null;
+  }
+};
+
+// Token yenileme fonksiyonu
+export const refreshToken = async (): Promise<{ success: boolean; token?: string; message?: string }> => {
+  try {
+    console.log('🔄 Token yenileniyor...');
+    
+    const currentToken = await SecureStore.getItemAsync(TOKEN_KEY);
+    if (!currentToken) {
+      console.log('❌ Yenilenecek token bulunamadı');
+      return { success: false, message: 'Token bulunamadı' };
+    }
+    
+    // Token tamamen süresi dolmuşsa yenileme yapamayız
+    if (isTokenExpired(currentToken)) {
+      console.log('❌ Token tamamen süresi dolmuş, yeniden giriş gerekli');
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+      await storage.removeUser();
+      return { success: false, message: 'Token süresi dolmuş, yeniden giriş yapın' };
+    }
+    
+    const response = await axios.post(
+      `${API_URL}/api/auth/refresh`,
+      {},
+      {
+        headers: {
+          'Authorization': `Bearer ${currentToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      }
+    );
+    
+    if (response.data && response.data.success && response.data.token) {
+      const newToken = response.data.token;
+      await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+      console.log('✅ Token başarıyla yenilendi');
+      return { success: true, token: newToken };
+    }
+    
+    console.log('❌ Token yenileme başarısız:', response.data);
+    return { success: false, message: 'Token yenilenemedi' };
+  } catch (error: any) {
+    console.error('❌ Token yenileme hatası:', error);
+    
+    // 401 hatası durumunda token'ı temizle
+    if (error.response?.status === 401) {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+      await storage.removeUser();
+      return { success: false, message: 'Oturum süresi dolmuş, yeniden giriş yapın' };
+    }
+    
+    return { success: false, message: 'Token yenileme hatası' };
+  }
+};
+
+// Token'ı kontrol et ve gerekirse yenile
+export const ensureValidToken = async (): Promise<{ success: boolean; token?: string; message?: string }> => {
+  try {
+    const currentToken = await SecureStore.getItemAsync(TOKEN_KEY);
+    
+    if (!currentToken) {
+      console.log('❌ Token bulunamadı');
+      return { success: false, message: 'Token bulunamadı' };
+    }
+    
+    // Token tamamen süresi dolmuşsa
+    if (isTokenExpired(currentToken)) {
+      console.log('⚠️ Token süresi dolmuş, yenileme deneniyor...');
+      return await refreshToken();
+    }
+    
+    // Token yakında sona erecekse yenile
+    if (isTokenExpiringSoon(currentToken)) {
+      console.log('⚠️ Token yakında sona erecek, yenileme deneniyor...');
+      const refreshResult = await refreshToken();
+      
+      // Yenileme başarısızsa mevcut token'ı kullan
+      if (!refreshResult.success) {
+        console.log('⚠️ Token yenilenemedi, mevcut token kullanılıyor');
+        return { success: true, token: currentToken };
+      }
+      
+      return refreshResult;
+    }
+    
+    // Token geçerli
+    console.log('✅ Token geçerli');
+    return { success: true, token: currentToken };
+  } catch (error) {
+    console.error('❌ Token kontrol hatası:', error);
+    return { success: false, message: 'Token kontrol hatası' };
   }
 };
 

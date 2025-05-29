@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -12,14 +12,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   Card, 
-  Title, 
-  Paragraph, 
-  Button, 
   ActivityIndicator, 
-  Surface, 
-  IconButton,
   Badge,
-  Divider
 } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useUserStore } from '../store/user';
@@ -38,21 +32,58 @@ export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   
   // Socket bağlantısı
-  const { isConnected, notifications: socketNotifications, unreadCount } = useSocket();
+  const { notifications: socketNotifications } = useSocket();
   
   // Bildirimleri yükle
   const loadNotifications = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getNotifications({ limit: 50 });
-      setNotifications(data);
+      setNotifications(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Bildirimler yüklenirken hata:', error);
       Alert.alert('Hata', 'Bildirimler yüklenemedi');
+      setNotifications([]);
     } finally {
       setLoading(false);
     }
   }, []);
+  
+  // Socket bildirimlerini API bildirimlerine dönüştür
+  const convertSocketNotifications = useCallback((socketNotifs: any[]): Notification[] => {
+    // Güvenli kontrol: socketNotifs'in array olduğundan emin ol
+    if (!Array.isArray(socketNotifs)) {
+      return [];
+    }
+    
+    return socketNotifs
+      .filter(socketNotif => socketNotif && typeof socketNotif === 'object')
+      .map(socketNotif => ({
+        _id: `socket-${socketNotif.id || Date.now()}`,
+        userId: user?.id || '',
+        title: socketNotif.title || 'Bildirim',
+        message: socketNotif.message || '',
+        type: socketNotif.type || 'announcement',
+        isRead: socketNotif.read || false,
+        data: socketNotif.data || {},
+        createdAt: socketNotif.timestamp ? socketNotif.timestamp.toISOString() : new Date().toISOString(),
+        updatedAt: socketNotif.timestamp ? socketNotif.timestamp.toISOString() : new Date().toISOString()
+      }));
+  }, [user?.id]);
+  
+  // Tüm bildirimleri birleştir (API + Socket)
+  const allNotifications = useMemo(() => {
+    const apiNotifications = Array.isArray(notifications) ? notifications : [];
+    const convertedSocketNotifications = convertSocketNotifications(socketNotifications || []);
+    
+    // Birleştir ve tarihe göre sırala
+    const combined = [...apiNotifications, ...convertedSocketNotifications];
+    return combined.sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateB - dateA;
+    });
+  }, [notifications, socketNotifications, convertSocketNotifications]);
   
   useEffect(() => {
     loadNotifications();
@@ -67,15 +98,26 @@ export default function NotificationsScreen() {
   
   // Bildirimi okundu olarak işaretle
   const handleMarkAsRead = async (notification: Notification) => {
-    if (notification.isRead) return;
+    if (!notification || notification.isRead) return;
     
     try {
-      await markNotificationAsRead(notification._id);
-      setNotifications(prev => 
-        prev.map(n => 
-          n._id === notification._id ? { ...n, isRead: true } : n
-        )
-      );
+      // Socket bildirimi ise
+      if (notification._id.startsWith('socket-')) {
+        // Socket bildirimi için local state güncelle
+        setNotifications(prev => 
+          prev.map(n => 
+            n._id === notification._id ? { ...n, isRead: true } : n
+          )
+        );
+      } else {
+        // API bildirimi ise
+        await markNotificationAsRead(notification._id);
+        setNotifications(prev => 
+          prev.map(n => 
+            n._id === notification._id ? { ...n, isRead: true } : n
+          )
+        );
+      }
     } catch (error) {
       console.error('Bildirim okundu olarak işaretlenirken hata:', error);
     }
@@ -93,8 +135,15 @@ export default function NotificationsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteNotification(notificationId);
-              setNotifications(prev => prev.filter(n => n._id !== notificationId));
+              // Socket bildirimi ise
+              if (notificationId.startsWith('socket-')) {
+                // Socket bildirimi için sadece local state'den kaldır
+                setNotifications(prev => prev.filter(n => n._id !== notificationId));
+              } else {
+                // API bildirimi ise
+                await deleteNotification(notificationId);
+                setNotifications(prev => prev.filter(n => n._id !== notificationId));
+              }
             } catch (error) {
               console.error('Bildirim silinirken hata:', error);
               Alert.alert('Hata', 'Bildirim silinemedi');
@@ -129,9 +178,9 @@ export default function NotificationsScreen() {
     }
   };
   
-  // Okunmamış bildirimler
-  const unreadNotifications = notifications.filter(n => !n.isRead);
-  const readNotifications = notifications.filter(n => n.isRead);
+  // Okunmamış ve okunmuş bildirimleri ayır
+  const unreadNotifications = allNotifications.filter(n => !n.isRead);
+  const readNotifications = allNotifications.filter(n => n.isRead);
   
   return (
     <View style={styles.container}>
@@ -151,13 +200,6 @@ export default function NotificationsScreen() {
             {unreadNotifications.length > 0 && (
               <Badge style={styles.headerBadge}>{unreadNotifications.length}</Badge>
             )}
-          </View>
-          <View style={styles.connectionStatus}>
-            <Ionicons 
-              name={isConnected ? "wifi" : "wifi-outline"} 
-              size={20} 
-              color={isConnected ? "#10b981" : "#ef4444"} 
-            />
           </View>
         </View>
       </View>
@@ -181,7 +223,7 @@ export default function NotificationsScreen() {
           }
           showsVerticalScrollIndicator={false}
         >
-          {notifications.length === 0 ? (
+          {allNotifications.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="notifications-outline" size={64} color="#9ca3af" />
               <Text style={styles.emptyStateTitle}>Bildirim Yok</Text>
@@ -342,9 +384,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ef4444',
     minWidth: 20,
     height: 20,
-  },
-  connectionStatus: {
-    padding: 8,
   },
   scrollView: {
     flex: 1,

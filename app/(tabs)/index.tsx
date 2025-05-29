@@ -299,12 +299,12 @@ export default function HomeScreen() {
                   )}
                 </View>
                 <Text style={styles.serviceLabel}>{service.label}</Text>
-        </TouchableOpacity>
+              </TouchableOpacity>
             ))}
           </View>
-      </View>
-      
-      {/* Son Duyurular */}
+        </View>
+        
+        {/* Son Duyurular */}
         <View style={styles.section}>
         <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Son Duyurular</Text>

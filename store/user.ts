@@ -13,6 +13,7 @@ type UserStore = {
   setUser: (user: User) => void;
   clearUser: () => void;
   hydrate: () => Promise<void>;
+  loadProfile: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -38,11 +39,6 @@ export const useUserStore = create<UserStore>((set, get) => ({
     try {
       console.log('Kullanıcı bilgileri yükleniyor...');
       
-      // İnternet bağlantısı kontrolü
-      const netInfo = await NetInfo.fetch();
-      const isOnline = netInfo.isConnected;
-      console.log('İnternet bağlantısı:', isOnline ? 'Var' : 'Yok');
-      
       // İlk olarak bellekteki kullanıcı bilgilerini kontrol et
       const storedUser = await storage.getUser();
       
@@ -67,38 +63,8 @@ export const useUserStore = create<UserStore>((set, get) => ({
             set({ user: storedUser });
           }
           
-          // Online ise API'den profil bilgilerini al - API'den gelen bilgiler öncelikli
-          if (isOnline) {
-            try {
-              console.log('API\'den profil bilgileri alınıyor...');
-              const profileData = await apiServices.profile.getProfile();
-              
-              if (profileData) {
-                console.log('API\'den alınan profil bilgileri:', profileData);
-                // API'den gelen bilgileri öncelikli olarak kullan, eksik alanları token veya bellekten tamamla
-                const currentUser = get().user;
-                if (currentUser) {
-                  // API'den gelen bilgileri token ve bellekteki bilgilerle birleştir
-                  const updatedUser = { 
-                    ...currentUser,
-                    ...profileData,
-                    // API'den eksik gelen kritik alanlar için backup
-                    id: profileData.id || currentUser.id,
-                    email: profileData.email || currentUser.email,
-                    role: profileData.role || currentUser.role
-                  };
-                  console.log('Güncel profil bilgileri:', updatedUser);
-                  set({ user: updatedUser });
-                  await storage.setUser(updatedUser);
-                }
-              } else {
-                console.log('API\'den profil bilgisi alınamadı');
-              }
-            } catch (error) {
-              console.error('Profil bilgileri alınırken hata:', error);
-              // Hata durumunda mevcut bilgileri koruyoruz
-            }
-          }
+          // Hydrate'da profil API çağrısı yapmıyoruz, sadece cache'den yüklüyoruz
+          console.log('Kullanıcı bilgileri başarıyla yüklendi');
         } else {
           console.log('Token decode edilemedi');
           // Token geçersizse ve bellekte kullanıcı bilgileri varsa, bunları kullan
@@ -123,6 +89,80 @@ export const useUserStore = create<UserStore>((set, get) => ({
     } catch (error) {
       console.error('Kullanıcı bilgileri yüklenirken hata:', error);
       // Hata durumunda mevcut durumu koruyoruz, null'a çekmiyoruz
+    }
+  },
+  
+  loadProfile: async () => {
+    try {
+      console.log('🔄 Profil bilgileri API\'den yükleniyor...');
+      set({ isLoading: true, error: null });
+      
+      // İnternet bağlantısı kontrolü
+      const netInfo = await NetInfo.fetch();
+      const isOnline = netInfo.isConnected;
+      console.log('📶 İnternet bağlantısı:', isOnline ? 'Var' : 'Yok');
+      
+      if (!isOnline) {
+        console.log('📱 Offline mod: Mevcut kullanıcı bilgileri korunuyor');
+        set({ isLoading: false });
+        return;
+      }
+      
+      try {
+        // Token kontrolü ve yenileme
+        const { ensureValidToken } = await import('../utils/auth');
+        const tokenResult = await ensureValidToken();
+        
+        if (!tokenResult.success) {
+          console.log('❌ Geçerli token bulunamadı:', tokenResult.message);
+          set({ isLoading: false, error: tokenResult.message || 'Token hatası' });
+          return;
+        }
+        
+        console.log('✅ Token geçerli, profil bilgileri alınıyor...');
+        const profileData = await apiServices.profile.getProfile();
+        
+        if (profileData) {
+          console.log('✅ API\'den alınan profil bilgileri:', profileData);
+          // API'den gelen bilgileri öncelikli olarak kullan, eksik alanları mevcut bilgilerle tamamla
+          const currentUser = get().user;
+          if (currentUser) {
+            // API'den gelen bilgileri mevcut bilgilerle birleştir
+            const updatedUser = { 
+              ...currentUser,
+              ...profileData,
+              // API'den eksik gelen kritik alanlar için backup
+              id: profileData.id || currentUser.id,
+              email: profileData.email || currentUser.email,
+              role: profileData.role || currentUser.role
+            };
+            console.log('📝 Güncel profil bilgileri:', updatedUser);
+            set({ user: updatedUser, isLoading: false });
+            await storage.setUser(updatedUser);
+          } else {
+            console.log('❌ Mevcut kullanıcı bilgisi bulunamadı');
+            set({ isLoading: false, error: 'Kullanıcı bilgisi bulunamadı' });
+          }
+        } else {
+          console.log('❌ API\'den profil bilgisi alınamadı');
+          set({ isLoading: false, error: 'Profil bilgileri alınamadı' });
+        }
+      } catch (error: any) {
+        console.error('❌ Profil bilgileri alınırken hata:', error);
+        
+        // 401 hatası durumunda kullanıcıyı bilgilendir ama oturumu kapatma
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized') || error.message?.includes('Oturum süreniz dolmuş')) {
+          console.log('⚠️ Token geçersiz olabilir, ancak profil sayfasında oturum kapatılmıyor');
+          set({ isLoading: false, error: 'Oturum süreniz dolmuş olabilir. Lütfen tekrar giriş yapmayı deneyin.' });
+        } else {
+          // Diğer hata durumlarında mevcut bilgileri koruyoruz
+          console.log('⚠️ Profil hatası göz ardı ediliyor, mevcut bilgiler korunuyor');
+          set({ isLoading: false, error: 'Profil bilgileri güncellenemedi' });
+        }
+      }
+    } catch (error) {
+      console.error('💥 Profil yükleme sırasında beklenmeyen hata:', error);
+      set({ isLoading: false, error: 'Beklenmeyen bir hata oluştu' });
     }
   },
   
@@ -202,7 +242,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
           
           // Profil güncelleme isteğini kuyruğa ekle
           await apiQueue.add({
-            url: '/profile',
+            url: '/auth/profile',
             method: 'put',
             data: userData,
           });

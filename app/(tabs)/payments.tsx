@@ -129,7 +129,25 @@ export default function PaymentsScreen() {
 
   const handlePayment = (payment: Payment) => {
     Alert.alert(
-      'Ödeme İşlemi',
+      'Ödeme Seçenekleri',
+      `${payment.amount} TL tutarındaki ödeme için seçiminizi yapın:`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Ödendi İşaretle',
+          onPress: () => markAsCompleted(payment),
+        },
+        {
+          text: 'Ödeme Yap',
+          onPress: () => processPayment(payment),
+        },
+      ]
+    );
+  };
+
+  const markAsCompleted = (payment: Payment) => {
+    Alert.alert(
+      'Ödeme İşaretleme',
       `${payment.amount} TL tutarındaki ödemeyi (\`${payment.description}\`) 'Ödendi' olarak işaretlemek istediğinize emin misiniz?`,
       [
         { text: 'İptal', style: 'cancel' },
@@ -162,6 +180,47 @@ export default function PaymentsScreen() {
         },
       ]
     );
+  };
+
+  const processPayment = (payment: Payment) => {
+    Alert.alert(
+      'Ödeme Onayı',
+      `${payment.amount} TL tutarındaki ödemeyi yapmak istediğinize emin misiniz?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Evet, Ödeme Yap',
+          onPress: () => makePayment(payment, 'ONLINE'),
+        },
+      ]
+    );
+  };
+
+  const makePayment = async (payment: Payment, paymentMethod: string = 'ONLINE') => {
+    try {
+      if (useLocalData) {
+        // Simulate payment processing
+        const updatedPayments = localPayments.map(p => 
+          p._id === payment._id 
+            ? {...p, 
+                status: 'PAID' as Payment['status'], 
+                paymentDate: new Date().toISOString().split('T')[0], 
+                paymentMethod: paymentMethod as Payment['paymentMethod']
+              } 
+            : p
+        );
+        setLocalPayments(updatedPayments);
+        Alert.alert('Başarılı', 'Ödeme işlemi tamamlandı!');
+      } else {
+        // Real payment processing
+        const { processPayment } = usePaymentsStore.getState();
+        await processPayment(payment._id, paymentMethod);
+        Alert.alert('Başarılı', 'Ödeme işlemi tamamlandı!');
+        loadPayments();
+      }
+    } catch (err: any) {
+      Alert.alert('Hata', err.message || 'Ödeme işlemi sırasında bir hata oluştu');
+    }
   };
 
   // Choose which payments to display based on whether we're using API data or local data
@@ -244,15 +303,27 @@ export default function PaymentsScreen() {
           )}
 
           {item.status === 'PENDING' && (!currentUser || currentUser.id === item.userId) && (
+            <View style={styles.buttonContainer}>
             <Button
-              mode="contained"
+                mode="outlined"
               icon="check-circle-outline"
-              onPress={() => handlePayment(item)}
-              style={styles.actionButton}
-              buttonColor={Colors.success}
+                onPress={() => markAsCompleted(item)}
+                style={[styles.actionButton, styles.markButton]}
+                buttonColor={Colors.lightGray}
+                textColor={Colors.primary}
             >
               Ödendi İşaretle
             </Button>
+              <Button
+                mode="contained"
+                icon="credit-card"
+                onPress={() => processPayment(item)}
+                style={[styles.actionButton, styles.payButton]}
+                buttonColor={Colors.success}
+              >
+                Ödeme Yap
+              </Button>
+            </View>
           )}
         </Card.Content>
       </Card>
@@ -546,6 +617,20 @@ const createStyles = (theme: MD3Theme) => StyleSheet.create({
     marginTop: 12,
     borderRadius: 8,
     paddingVertical: 6,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 8,
+  },
+  markButton: {
+    flex: 1,
+    marginRight: 4,
+  },
+  payButton: {
+    flex: 1,
+    marginLeft: 4,
   },
 });
 

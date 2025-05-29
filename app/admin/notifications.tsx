@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useSocket } from '../../hooks/useSocket';
 import { useUserStore } from '../../store/user';
+import { sendSocketNotification, getSentNotifications, SentNotification } from '../../services/api';
 
 interface NotificationData {
   id: string;
@@ -31,14 +31,15 @@ interface NotificationData {
 }
 
 export default function AdminNotificationsScreen() {
-  const { user } = useUserStore();
-  const { socket, isConnected, sendNotification, notifications, unreadCount } = useSocket();
-  const [loading, setLoading] = useState(false);
+  const [sentNotifications, setSentNotifications] = useState<NotificationData[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [sentNotifications, setSentNotifications] = useState<NotificationData[]>([]);
+  const [isConnected, setIsConnected] = useState(true); // API bağlantısı için
+  const { user } = useUserStore();
+
   const [formData, setFormData] = useState({
-    type: 'general' as 'announcement' | 'maintenance' | 'payment' | 'emergency' | 'general',
+    type: 'general',
     title: '',
     message: '',
     targetRole: 'ALL' as 'ALL' | 'RESIDENT' | 'ADMIN',
@@ -53,35 +54,33 @@ export default function AdminNotificationsScreen() {
 
   const loadSentNotifications = async () => {
     try {
-      // Burada gerçek API'den gönderilen bildirimleri yükleyebilirsiniz
-      // Şimdilik örnek veri kullanıyoruz
-      const mockData: NotificationData[] = [
-        {
-          id: '1',
-          type: 'announcement',
-          title: 'Site Toplantısı',
-          message: 'Aylık site toplantısı yarın saat 19:00\'da yapılacaktır.',
-          targetRole: 'ALL',
-          priority: 'HIGH',
-          createdAt: new Date().toISOString(),
-          sentCount: 25,
-          status: 'SENT'
-        },
-        {
-          id: '2',
-          type: 'maintenance',
-          title: 'Su Kesintisi',
-          message: 'Yarın saat 09:00-17:00 arası su kesintisi yaşanacaktır.',
-          targetRole: 'RESIDENT',
-          priority: 'URGENT',
-          createdAt: new Date(Date.now() - 86400000).toISOString(),
-          sentCount: 18,
-          status: 'SENT'
-        }
-      ];
-      setSentNotifications(mockData);
-    } catch (error) {
-      console.error('Bildirimler yüklenirken hata:', error);
+      console.log('📢 Gönderilen bildirimler yükleniyor...');
+      
+      // API'den gerçek gönderilen bildirimleri çek
+      const apiNotifications = await getSentNotifications({ limit: 50 });
+      
+      // API verilerini frontend formatına çevir
+      const formattedNotifications: NotificationData[] = apiNotifications.map((notification: SentNotification) => ({
+        id: notification._id,
+        type: notification.type as 'announcement' | 'maintenance' | 'payment' | 'emergency' | 'general',
+        title: notification.title,
+        message: notification.message,
+        targetRole: notification.targetRole as 'ALL' | 'RESIDENT' | 'ADMIN',
+        targetApartment: notification.targetApartment,
+        targetBlock: notification.targetBlock,
+        priority: notification.priority as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
+        createdAt: notification.createdAt,
+        sentCount: notification.targetCount,
+        status: 'SENT' as const
+      }));
+      
+      setSentNotifications(formattedNotifications);
+      console.log('✅ Gönderilen bildirimler yüklendi:', formattedNotifications.length);
+    } catch (error: any) {
+      console.error('❌ Bildirimler yüklenirken hata:', error);
+      // Hata durumunda boş array set et
+      setSentNotifications([]);
+      Alert.alert('Hata', 'Gönderilen bildirimler yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -116,45 +115,41 @@ export default function AdminNotificationsScreen() {
       return;
     }
 
-    if (!socket || !isConnected) {
-      Alert.alert('Hata', 'Socket bağlantısı yok. Lütfen tekrar deneyin.');
-      return;
-    }
-
     try {
       setLoading(true);
+      console.log('📤 Bildirim gönderiliyor...');
 
       const notificationData = {
         type: formData.type,
         title: formData.title.trim(),
         message: formData.message.trim(),
-        targetRole: formData.targetRole,
+        targetRole: formData.targetRole === 'ALL' ? 'ALL' : 
+                   formData.targetRole === 'ADMIN' ? 'ADMIN' : 
+                   formData.targetRole === 'RESIDENT' ? 'RESIDENT' : 'ALL',
+        targetRoles: formData.targetRole === 'ALL' ? ['ADMIN', 'RESIDENT'] : 
+                    formData.targetRole === 'ADMIN' ? ['ADMIN'] : 
+                    formData.targetRole === 'RESIDENT' ? ['RESIDENT'] : ['ADMIN', 'RESIDENT'],
         targetApartment: formData.targetApartment.trim() || undefined,
+        targetApartments: formData.targetApartment.trim() ? [formData.targetApartment.trim()] : undefined,
         targetBlock: formData.targetBlock.trim() || undefined,
+        targetBlocks: formData.targetBlock.trim() ? [formData.targetBlock.trim()] : undefined,
         priority: formData.priority,
         senderName: user?.name || 'Admin',
         timestamp: new Date().toISOString(),
       };
 
-      // Socket ile bildirim gönder
-      sendNotification(notificationData);
+      // API ile bildirim gönder (hem Socket.IO hem de veritabanına kayıt)
+      const response = await sendSocketNotification(notificationData);
+      console.log('✅ Bildirim API yanıtı:', response);
 
-      // Gönderilen bildirimler listesine ekle
-      const newNotification: NotificationData = {
-        id: Date.now().toString(),
-        ...notificationData,
-        createdAt: new Date().toISOString(),
-        sentCount: 0, // Gerçek sayı backend'den gelecek
-        status: 'SENT'
-      };
-
-      setSentNotifications(prev => [newNotification, ...prev]);
-
-      Alert.alert('Başarılı', 'Bildirim başarıyla gönderildi');
+      Alert.alert('Başarılı', `Bildirim başarıyla gönderildi (${response.targetCount} kişiye)`);
       closeModal();
-    } catch (error) {
-      console.error('Bildirim gönderme hatası:', error);
-      Alert.alert('Hata', 'Bildirim gönderilirken bir hata oluştu');
+      
+      // Listeyi API'den yenile
+      await loadSentNotifications();
+    } catch (error: any) {
+      console.error('❌ Bildirim gönderme hatası:', error);
+      Alert.alert('Hata', error.message || 'Bildirim gönderilirken bir hata oluştu');
     } finally {
       setLoading(false);
     }
@@ -247,8 +242,10 @@ export default function AdminNotificationsScreen() {
           <Text style={styles.statLabel}>Gönderilen</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={[styles.statNumber, { color: '#3B82F6' }]}>{unreadCount}</Text>
-          <Text style={styles.statLabel}>Okunmamış</Text>
+          <Text style={[styles.statNumber, { color: '#3B82F6' }]}>
+            {sentNotifications.filter(n => n.priority === 'URGENT').length}
+          </Text>
+          <Text style={styles.statLabel}>Acil</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={[styles.statNumber, { color: '#10B981' }]}>

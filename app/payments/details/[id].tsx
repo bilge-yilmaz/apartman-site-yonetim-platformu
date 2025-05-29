@@ -57,16 +57,52 @@ export default function PaymentDetailsScreen() {
     if (!payment) return;
     
     Alert.alert(
-      'Ödeme Yap',
-      `${payment.amount} TL tutarındaki aidatı ödemek istediğinize emin misiniz?`,
+      'Ödeme Onayı',
+      `${payment.amount} TL tutarındaki ödemeyi yapmak istediğinize emin misiniz?`,
       [
         { text: 'İptal', style: 'cancel' },
         {
-          text: 'Ödeme Yap',
+          text: 'Evet, Ödeme Yap',
+          onPress: () => processPayment('ONLINE'),
+        },
+      ]
+    );
+  };
+
+  const processPayment = async (paymentMethod: string = 'ONLINE') => {
+    if (!payment) return;
+    
+    try {
+      const { processPayment: storeProcessPayment } = usePaymentsStore.getState();
+      await storeProcessPayment(payment._id, paymentMethod);
+      
+      Alert.alert(
+        'Ödeme Başarılı', 
+        `${payment.amount} TL tutarındaki ödemeniz başarıyla tamamlandı.`,
+        [
+          { text: 'Tamam', onPress: () => router.back() }
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert('Ödeme Hatası', error.message || 'Ödeme işlemi sırasında bir hata oluştu');
+    }
+  };
+
+  const markAsCompleted = async () => {
+    if (!payment) return;
+    
+    Alert.alert(
+      'Ödeme İşaretleme',
+      `${payment.amount} TL tutarındaki ödemeyi 'Ödendi' olarak işaretlemek istediğinize emin misiniz?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Evet, Ödendi İşaretle',
           onPress: async () => {
             try {
-              await markAsPaid(payment._id, 'ONLINE');
-              Alert.alert('Başarılı', 'Ödeme işleminiz tamamlandı', [
+              const { markAsPaid } = usePaymentsStore.getState();
+              await markAsPaid(payment._id, 'USER_MARKED_AS_PAID');
+              Alert.alert('Başarılı', 'Ödeme durumu güncellendi', [
                 { text: 'Tamam', onPress: () => router.back() }
               ]);
             } catch (error) {
@@ -301,6 +337,17 @@ export default function PaymentDetailsScreen() {
                 icon="credit-card-outline"
               >
                 Ödeme Yap
+              </Button>
+              
+              <Button
+                mode="outlined"
+                onPress={markAsCompleted}
+                style={[styles.payButton, { marginTop: 12, backgroundColor: 'transparent' }]}
+                contentStyle={styles.buttonContent}
+                labelStyle={[styles.buttonLabel, { color: '#1976D2' }]}
+                icon="check-circle-outline"
+              >
+                Ödendi İşaretle
               </Button>
             </View>
           )}

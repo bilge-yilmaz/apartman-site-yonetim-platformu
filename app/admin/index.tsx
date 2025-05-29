@@ -6,7 +6,8 @@ import {
   RefreshControl, 
   Dimensions, 
   TouchableOpacity,
-  StatusBar 
+  StatusBar,
+  Alert
 } from 'react-native';
 import { Text, Card, ActivityIndicator } from 'react-native-paper';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -15,37 +16,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
 import { useUserStore } from '../../store/user';
 import AdminPageGuard from '../../components/AdminPageGuard';
-import { apiServices } from '../../utils/api-services';
+import { getDashboardStats, DashboardStats } from '../../services/api';
 
 const { width } = Dimensions.get('window');
 
 export default function AdminDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [stats, setStats] = useState({
-    users: {
-      total: 125,
-      active: 118,
-      inactive: 7
-    },
-    payments: {
-      total: 285000,
-      pending: 45000,
-      overdue: 12000
-    },
-    maintenance: {
-      total: 28,
-      pending: 8,
-      inProgress: 5,
-      completed: 15
-    },
-    announcements: {
-      total: 12,
-      active: 8
-    }
-  });
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
   const { user } = useUserStore();
 
@@ -57,49 +37,44 @@ export default function AdminDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // İlk yüklemede ve yenileme durumunda verileri getir
-  const fetchDashboardData = async () => {
+  // Dashboard verilerini yükle
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
     try {
-      setError(null);
-      // Simulated delay for loading effect
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log('📊 Dashboard verileri yükleniyor...');
       
-      // Mock data - gerçek API'den gelecek
-      setStats({
-        users: {
-          total: 125,
-          active: 118,
-          inactive: 7
-        },
-        payments: {
-          total: 285000,
-          pending: 45000,
-          overdue: 12000
-        },
-        maintenance: {
-          total: 28,
-          pending: 8,
-          inProgress: 5,
-          completed: 15
-        },
-        announcements: {
-          total: 12,
-          active: 8
-        }
+      // Timeout ile API çağrısını sınırla (10 saniye)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('API timeout - 10 saniye')), 10000)
+      );
+      
+      const apiPromise = getDashboardStats();
+      
+      const stats = await Promise.race([apiPromise, timeoutPromise]) as DashboardStats;
+      setDashboardStats(stats);
+      setError(null);
+      console.log('✅ Dashboard verileri başarıyla yüklendi');
+    } catch (error: any) {
+      console.error('❌ Dashboard verileri yüklenirken hata:', error);
+      setError(error.message || 'Dashboard verileri yüklenirken bir hata oluştu');
+      
+      // Fallback olarak mock veriler kullan
+      console.log('🔄 Fallback mock veriler kullanılıyor...');
+      setDashboardStats({
+        users: { total: 45, active: 42, inactive: 3 },
+        payments: { total: 125000, pending: 25000, overdue: 8000, collected: 92000 },
+        maintenance: { total: 23, pending: 5, inProgress: 3, completed: 15 },
+        announcements: { total: 12, active: 8 },
+        reservations: { total: 18, pending: 2, approved: 16 }
       });
-    } catch (err) {
-      console.error('Dashboard verileri alınırken hata:', err);
-      setError('Veriler yüklenirken bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
-
-  // Sayfa ilk yüklendiğinde verileri getir
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
 
   // Yetki kontrolü
   useEffect(() => {
@@ -111,7 +86,7 @@ export default function AdminDashboard() {
   // Yenileme işlemi
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
-    fetchDashboardData();
+    loadDashboardData();
   }, []);
 
   const formatTime = (date: Date) => {
@@ -129,6 +104,15 @@ export default function AdminDashboard() {
       month: 'long', 
       day: 'numeric' 
     });
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'TRY',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
   };
 
   const StatCard = ({ 
@@ -230,177 +214,167 @@ export default function AdminDashboard() {
           </View>
         </LinearGradient>
         
-        {error ? (
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={fetchDashboardData}>
-              <Text style={styles.retryButtonText}>Tekrar Dene</Text>
-            </TouchableOpacity>
+        <ScrollView 
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#4e7bff']} />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Ana Metrikler */}
+          <View style={styles.metricsContainer}>
+            <Text style={styles.sectionTitle}>📊 Ana Metrikler</Text>
+            <View style={styles.metricsGrid}>
+              <StatCard
+                title="Toplam Kullanıcı"
+                value={dashboardStats?.users.total || 0}
+                subtitle={`${dashboardStats?.users.active} aktif`}
+                icon="people"
+                gradient={['#4e7bff', '#3b5bdb']}
+                onPress={() => router.push("/admin/residents")}
+                trend={{ value: 5.2, isPositive: true }}
+              />
+              <StatCard
+                title="Aylık Gelir"
+                value={formatCurrency(dashboardStats?.payments.total || 0)}
+                subtitle="Bu ay toplanan"
+                icon="cash"
+                gradient={['#4caf50', '#388e3c']}
+                onPress={() => router.push("/admin/payments")}
+                trend={{ value: 8.1, isPositive: true }}
+              />
+              <StatCard
+                title="Bekleyen Talepler"
+                value={dashboardStats?.maintenance.pending || 0}
+                subtitle={`${dashboardStats?.maintenance.total} toplam`}
+                icon="construct"
+                gradient={['#ff9800', '#f57c00']}
+                onPress={() => router.push("/admin/maintenance")}
+                trend={{ value: 2.3, isPositive: false }}
+              />
+              <StatCard
+                title="Aktif Duyurular"
+                value={dashboardStats?.announcements.active || 0}
+                subtitle={`${dashboardStats?.announcements.total} toplam`}
+                icon="megaphone"
+                gradient={['#6b7280', '#4b5563']}
+                onPress={() => router.push("/admin/announcements")}
+                trend={{ value: 12.5, isPositive: true }}
+              />
+            </View>
           </View>
-        ) : (
-          <ScrollView 
-            style={styles.scrollView}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#4e7bff']} />
-            }
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Ana Metrikler */}
-            <View style={styles.metricsContainer}>
-              <Text style={styles.sectionTitle}>📊 Ana Metrikler</Text>
-              <View style={styles.metricsGrid}>
-                <StatCard
-                  title="Toplam Kullanıcı"
-                  value={stats.users.total}
-                  subtitle={`${stats.users.active} aktif`}
-                  icon="people"
-                  gradient={['#4e7bff', '#3b5bdb']}
-                  onPress={() => router.push("/admin/residents")}
-                  trend={{ value: 5.2, isPositive: true }}
-                />
-                <StatCard
-                  title="Aylık Gelir"
-                  value={`₺${(stats.payments.total / 1000).toFixed(0)}K`}
-                  subtitle="Bu ay toplanan"
-                  icon="cash"
-                  gradient={['#4caf50', '#388e3c']}
-                  onPress={() => router.push("/admin/payments")}
-                  trend={{ value: 8.1, isPositive: true }}
-                />
-                <StatCard
-                  title="Bekleyen Talepler"
-                  value={stats.maintenance.pending}
-                  subtitle={`${stats.maintenance.total} toplam`}
-                  icon="construct"
-                  gradient={['#ff9800', '#f57c00']}
-                  onPress={() => router.push("/admin/maintenance")}
-                  trend={{ value: 2.3, isPositive: false }}
-                />
-                <StatCard
-                  title="Aktif Duyurular"
-                  value={stats.announcements.active}
-                  subtitle={`${stats.announcements.total} toplam`}
-                  icon="megaphone"
-                  gradient={['#6b7280', '#4b5563']}
-                  onPress={() => router.push("/admin/announcements")}
-                  trend={{ value: 12.5, isPositive: true }}
-                />
+
+          {/* Hızlı İşlemler */}
+          <View style={styles.actionsContainer}>
+            <Text style={styles.sectionTitle}>⚡ Hızlı İşlemler</Text>
+            <View style={styles.actionsGrid}>
+              <QuickActionCard
+                title="Yeni Duyuru"
+                description="Site sakinlerine duyuru yayınla"
+                icon="megaphone-outline"
+                color="#4e7bff"
+                onPress={() => router.push("/admin/announcements")}
+              />
+              <QuickActionCard
+                title="Aidat Oluştur"
+                description="Yeni aidat kaydı oluştur"
+                icon="cash-outline"
+                color="#4caf50"
+                onPress={() => router.push("/admin/payments")}
+              />
+              <QuickActionCard
+                title="Kullanıcı Ekle"
+                description="Sisteme yeni kullanıcı ekle"
+                icon="person-add-outline"
+                color="#6b7280"
+                onPress={() => router.push("/admin/residents")}
+              />
+              <QuickActionCard
+                title="AI Raporları"
+                description="Yapay zeka destekli analizler"
+                icon="analytics-outline"
+                color="#ff9800"
+                onPress={() => router.push("/admin/reports")}
+              />
+            </View>
+          </View>
+
+          {/* Detaylı İstatistikler */}
+          <View style={styles.detailsContainer}>
+            <Text style={styles.sectionTitle}>📈 Detaylı İstatistikler</Text>
+            
+            {/* Aidat Durumu */}
+            <Card style={styles.detailCard}>
+              <View style={styles.detailHeader}>
+                <View style={styles.detailTitleContainer}>
+                  <Ionicons name="cash" size={20} color="#4e7bff" />
+                  <Text style={styles.detailTitle}>Aidat Durumu</Text>
+                </View>
+                <TouchableOpacity onPress={() => router.push("/admin/payments")}>
+                  <Ionicons name="chevron-forward" size={20} color="#666" />
+                </TouchableOpacity>
               </View>
-            </View>
-
-            {/* Hızlı İşlemler */}
-            <View style={styles.actionsContainer}>
-              <Text style={styles.sectionTitle}>⚡ Hızlı İşlemler</Text>
-              <View style={styles.actionsGrid}>
-                <QuickActionCard
-                  title="Yeni Duyuru"
-                  description="Site sakinlerine duyuru yayınla"
-                  icon="megaphone-outline"
-                  color="#4e7bff"
-                  onPress={() => router.push("/admin/announcements")}
-                />
-                <QuickActionCard
-                  title="Aidat Oluştur"
-                  description="Yeni aidat kaydı oluştur"
-                  icon="cash-outline"
-                  color="#4caf50"
-                  onPress={() => router.push("/admin/payments")}
-                />
-                <QuickActionCard
-                  title="Kullanıcı Ekle"
-                  description="Sisteme yeni kullanıcı ekle"
-                  icon="person-add-outline"
-                  color="#6b7280"
-                  onPress={() => router.push("/admin/residents")}
-                />
-                <QuickActionCard
-                  title="AI Raporları"
-                  description="Yapay zeka destekli analizler"
-                  icon="analytics-outline"
-                  color="#ff9800"
-                  onPress={() => router.push("/admin/reports")}
-                />
+              <View style={styles.progressContainer}>
+                <View style={styles.progressItem}>
+                  <Text style={styles.progressLabel}>Toplanan</Text>
+                  <View style={styles.progressBar}>
+                    <View style={[styles.progressFill, { width: '75%', backgroundColor: '#4caf50' }]} />
+                  </View>
+                  <Text style={styles.progressValue}>{formatCurrency(dashboardStats?.payments.total || 0)}</Text>
+                </View>
+                <View style={styles.progressItem}>
+                  <Text style={styles.progressLabel}>Bekleyen</Text>
+                  <View style={styles.progressBar}>
+                    <View style={[styles.progressFill, { width: '20%', backgroundColor: '#ff9800' }]} />
+                  </View>
+                  <Text style={styles.progressValue}>{formatCurrency(dashboardStats?.payments.pending || 0)}</Text>
+                </View>
+                <View style={styles.progressItem}>
+                  <Text style={styles.progressLabel}>Gecikmiş</Text>
+                  <View style={styles.progressBar}>
+                    <View style={[styles.progressFill, { width: '5%', backgroundColor: '#f44336' }]} />
+                  </View>
+                  <Text style={styles.progressValue}>{formatCurrency(dashboardStats?.payments.overdue || 0)}</Text>
+                </View>
               </View>
-            </View>
+            </Card>
 
-            {/* Detaylı İstatistikler */}
-            <View style={styles.detailsContainer}>
-              <Text style={styles.sectionTitle}>📈 Detaylı İstatistikler</Text>
-              
-              {/* Aidat Durumu */}
-              <Card style={styles.detailCard}>
-                <View style={styles.detailHeader}>
-                  <View style={styles.detailTitleContainer}>
-                    <Ionicons name="cash" size={20} color="#4e7bff" />
-                    <Text style={styles.detailTitle}>Aidat Durumu</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => router.push("/admin/payments")}>
-                    <Ionicons name="chevron-forward" size={20} color="#666" />
-                  </TouchableOpacity>
+            {/* Bakım Talepleri */}
+            <Card style={styles.detailCard}>
+              <View style={styles.detailHeader}>
+                <View style={styles.detailTitleContainer}>
+                  <Ionicons name="construct" size={20} color="#ff9800" />
+                  <Text style={styles.detailTitle}>Bakım Talepleri</Text>
                 </View>
-                <View style={styles.progressContainer}>
-                  <View style={styles.progressItem}>
-                    <Text style={styles.progressLabel}>Toplanan</Text>
-                    <View style={styles.progressBar}>
-                      <View style={[styles.progressFill, { width: '75%', backgroundColor: '#4caf50' }]} />
-                    </View>
-                    <Text style={styles.progressValue}>₺{stats.payments.total.toLocaleString()}</Text>
+                <TouchableOpacity onPress={() => router.push("/admin/maintenance")}>
+                  <Ionicons name="chevron-forward" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.maintenanceGrid}>
+                <View style={styles.maintenanceItem}>
+                  <View style={[styles.maintenanceBadge, { backgroundColor: '#f44336' }]}>
+                    <Text style={styles.maintenanceBadgeText}>{dashboardStats?.maintenance.pending || 0}</Text>
                   </View>
-                  <View style={styles.progressItem}>
-                    <Text style={styles.progressLabel}>Bekleyen</Text>
-                    <View style={styles.progressBar}>
-                      <View style={[styles.progressFill, { width: '20%', backgroundColor: '#ff9800' }]} />
-                    </View>
-                    <Text style={styles.progressValue}>₺{stats.payments.pending.toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.progressItem}>
-                    <Text style={styles.progressLabel}>Gecikmiş</Text>
-                    <View style={styles.progressBar}>
-                      <View style={[styles.progressFill, { width: '5%', backgroundColor: '#f44336' }]} />
-                    </View>
-                    <Text style={styles.progressValue}>₺{stats.payments.overdue.toLocaleString()}</Text>
-                  </View>
+                  <Text style={styles.maintenanceLabel}>Bekleyen</Text>
                 </View>
-              </Card>
+                <View style={styles.maintenanceItem}>
+                  <View style={[styles.maintenanceBadge, { backgroundColor: '#ff9800' }]}>
+                    <Text style={styles.maintenanceBadgeText}>{dashboardStats?.maintenance.inProgress || 0}</Text>
+                  </View>
+                  <Text style={styles.maintenanceLabel}>İşlemde</Text>
+                </View>
+                <View style={styles.maintenanceItem}>
+                  <View style={[styles.maintenanceBadge, { backgroundColor: '#4caf50' }]}>
+                    <Text style={styles.maintenanceBadgeText}>{dashboardStats?.maintenance.completed || 0}</Text>
+                  </View>
+                  <Text style={styles.maintenanceLabel}>Tamamlanan</Text>
+                </View>
+              </View>
+            </Card>
+          </View>
 
-              {/* Bakım Talepleri */}
-              <Card style={styles.detailCard}>
-                <View style={styles.detailHeader}>
-                  <View style={styles.detailTitleContainer}>
-                    <Ionicons name="construct" size={20} color="#ff9800" />
-                    <Text style={styles.detailTitle}>Bakım Talepleri</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => router.push("/admin/maintenance")}>
-                    <Ionicons name="chevron-forward" size={20} color="#666" />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.maintenanceGrid}>
-                  <View style={styles.maintenanceItem}>
-                    <View style={[styles.maintenanceBadge, { backgroundColor: '#f44336' }]}>
-                      <Text style={styles.maintenanceBadgeText}>{stats.maintenance.pending}</Text>
-                    </View>
-                    <Text style={styles.maintenanceLabel}>Bekleyen</Text>
-                  </View>
-                  <View style={styles.maintenanceItem}>
-                    <View style={[styles.maintenanceBadge, { backgroundColor: '#ff9800' }]}>
-                      <Text style={styles.maintenanceBadgeText}>{stats.maintenance.inProgress}</Text>
-                    </View>
-                    <Text style={styles.maintenanceLabel}>İşlemde</Text>
-                  </View>
-                  <View style={styles.maintenanceItem}>
-                    <View style={[styles.maintenanceBadge, { backgroundColor: '#4caf50' }]}>
-                      <Text style={styles.maintenanceBadgeText}>{stats.maintenance.completed}</Text>
-                    </View>
-                    <Text style={styles.maintenanceLabel}>Tamamlanan</Text>
-                  </View>
-                </View>
-              </Card>
-            </View>
-
-            <View style={styles.bottomPadding} />
-          </ScrollView>
-        )}
+          <View style={styles.bottomPadding} />
+        </ScrollView>
       </View>
     </AdminPageGuard>
   );
@@ -654,30 +628,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#7F8C8D',
     textAlign: 'center',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    marginTop: 10,
-    marginBottom: 20,
-    fontSize: 16,
-    color: Colors.error,
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: '#4e7bff',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
   },
   bottomPadding: {
     height: 20,

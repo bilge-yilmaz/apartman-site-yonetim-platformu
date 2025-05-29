@@ -13,14 +13,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { ResidentStorage, Resident } from '../../services/offlineStorage';
+import { getUsers, createUser, updateUser, deleteUser, User, UserData } from '../../services/api';
 
 export default function AdminResidentsScreen() {
-  const [residents, setResidents] = useState<Resident[]>([]);
+  const [residents, setResidents] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingResident, setEditingResident] = useState<Resident | null>(null);
+  const [editingResident, setEditingResident] = useState<User | null>(null);
   const [formData, setFormData] = useState<{
     name: string;
     email: string;
@@ -41,11 +41,13 @@ export default function AdminResidentsScreen() {
 
   const loadResidents = async () => {
     try {
-      const data = await ResidentStorage.getAll();
+      console.log('👥 Kullanıcılar yükleniyor...');
+      const data = await getUsers();
       setResidents(data.sort((a, b) => a.name.localeCompare(b.name)));
-    } catch (error) {
-      console.error('Sakinler yüklenirken hata:', error);
-      Alert.alert('Hata', 'Sakinler yüklenirken bir hata oluştu');
+      console.log('✅ Kullanıcılar başarıyla yüklendi:', data.length);
+    } catch (error: any) {
+      console.error('❌ Sakinler yüklenirken hata:', error);
+      Alert.alert('Hata', error.message || 'Sakinler yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -61,7 +63,7 @@ export default function AdminResidentsScreen() {
     loadResidents();
   };
 
-  const openModal = (resident?: Resident) => {
+  const openModal = (resident?: User) => {
     if (resident) {
       setEditingResident(resident);
       setFormData({
@@ -71,7 +73,7 @@ export default function AdminResidentsScreen() {
         block: resident.block || '',
         phone: resident.phone || '',
         role: resident.role,
-        isActive: resident.isActive,
+        isActive: resident.isActive !== false,
       });
     } else {
       setEditingResident(null);
@@ -116,7 +118,7 @@ export default function AdminResidentsScreen() {
     }
 
     try {
-      const residentData = {
+      const userData: UserData = {
         name: formData.name.trim(),
         email: formData.email.trim().toLowerCase(),
         apartmentNo: formData.apartmentNo.trim() || undefined,
@@ -127,22 +129,24 @@ export default function AdminResidentsScreen() {
       };
 
       if (editingResident) {
-        await ResidentStorage.update(editingResident.id, residentData);
+        console.log('👤 Kullanıcı güncelleniyor:', editingResident._id);
+        await updateUser(editingResident._id, userData);
         Alert.alert('Başarılı', 'Sakin bilgileri güncellendi');
       } else {
-        await ResidentStorage.create(residentData);
+        console.log('👤 Yeni kullanıcı oluşturuluyor');
+        await createUser(userData);
         Alert.alert('Başarılı', 'Yeni sakin eklendi');
       }
 
       closeModal();
       loadResidents();
-    } catch (error) {
-      console.error('Sakin kaydedilirken hata:', error);
-      Alert.alert('Hata', 'Sakin kaydedilirken bir hata oluştu');
+    } catch (error: any) {
+      console.error('❌ Sakin kaydedilirken hata:', error);
+      Alert.alert('Hata', error.message || 'Sakin kaydedilirken bir hata oluştu');
     }
   };
 
-  const handleDelete = (resident: Resident) => {
+  const handleDelete = (resident: User) => {
     Alert.alert(
       'Sakin Sil',
       `${resident.name} adlı sakini silmek istediğinize emin misiniz?`,
@@ -153,12 +157,13 @@ export default function AdminResidentsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await ResidentStorage.delete(resident.id);
+              console.log('🗑️ Kullanıcı siliniyor:', resident._id);
+              await deleteUser(resident._id);
               Alert.alert('Başarılı', 'Sakin silindi');
               loadResidents();
-            } catch (error) {
-              console.error('Sakin silinirken hata:', error);
-              Alert.alert('Hata', 'Sakin silinirken bir hata oluştu');
+            } catch (error: any) {
+              console.error('❌ Sakin silinirken hata:', error);
+              Alert.alert('Hata', error.message || 'Sakin silinirken bir hata oluştu');
             }
           },
         },
@@ -166,15 +171,16 @@ export default function AdminResidentsScreen() {
     );
   };
 
-  const toggleStatus = async (resident: Resident) => {
+  const toggleStatus = async (resident: User) => {
     try {
-      await ResidentStorage.update(resident.id, {
+      console.log('🔄 Kullanıcı durumu değiştiriliyor:', resident._id);
+      await updateUser(resident._id, {
         isActive: !resident.isActive,
       });
       loadResidents();
-    } catch (error) {
-      console.error('Durum güncellenirken hata:', error);
-      Alert.alert('Hata', 'Durum güncellenirken bir hata oluştu');
+    } catch (error: any) {
+      console.error('❌ Durum güncellenirken hata:', error);
+      Alert.alert('Hata', error.message || 'Durum güncellenirken bir hata oluştu');
     }
   };
 
@@ -196,8 +202,8 @@ export default function AdminResidentsScreen() {
 
   // İstatistikler
   const totalResidents = residents.length;
-  const activeResidents = residents.filter(r => r.isActive).length;
-  const inactiveResidents = residents.filter(r => !r.isActive).length;
+  const activeResidents = residents.filter(r => r.isActive !== false).length;
+  const inactiveResidents = residents.filter(r => r.isActive === false).length;
   const adminCount = residents.filter(r => r.role === 'ADMIN').length;
 
   if (loading) {
@@ -254,7 +260,7 @@ export default function AdminResidentsScreen() {
           </View>
         ) : (
           residents.map((resident) => (
-            <View key={resident.id} style={[
+            <View key={resident._id} style={[
               styles.residentCard,
               !resident.isActive && styles.inactiveCard
             ]}>

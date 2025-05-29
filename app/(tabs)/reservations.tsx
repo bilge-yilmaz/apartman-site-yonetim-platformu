@@ -6,13 +6,20 @@ import { Card, Button, Badge, Divider } from 'react-native-paper';
 import { FAB } from 'react-native-paper';
 import { router } from 'expo-router';
 import Colors from '../../constants/Colors';
+import { useUserStore } from '../../store/user';
+import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // @ts-ignore - Eksik tiplerden kaçınmak için
 import DateTimePicker from '@react-native-community/datetimepicker';
 // @ts-ignore - Eksik tiplerden kaçınmak için
 import RNPickerSelect from 'react-native-picker-select';
 import * as Haptics from 'expo-haptics';
-import { getReservations, getFacilities, createReservation, cancelReservation, Facility, Reservation } from '../../services/api';
+import { getReservations, getFacilities, createReservation, cancelReservation, Facility, Reservation, checkNetworkConnection } from '../../services/api';
+
+// AsyncStorage anahtarları
+const RESERVATIONS_STORAGE_KEY = 'reservations_cache';
+const FACILITIES_STORAGE_KEY = 'facilities_cache';
 
 // dateFormat.ts içindeki fonksiyonları burada tanımlayalım (geçici çözüm)
 const formatDate = (date: Date): string => {
@@ -46,12 +53,14 @@ const formatTime = (date: Date): string => {
 };
 
 export default function ReservationsScreen() {
+  const { user } = useUserStore();
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('upcoming');
   const [showNewReservationForm, setShowNewReservationForm] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
   
   // Form state
   const [selectedFacility, setSelectedFacility] = useState('');
@@ -61,106 +70,88 @@ export default function ReservationsScreen() {
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [notes, setNotes] = useState('');
+
+  // Network durumunu kontrol et
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state: any) => {
+      setIsOnline(state.isConnected ?? false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Cache'den veri yükle
+  const loadFromCache = async () => {
+    try {
+      const [cachedReservations, cachedFacilities] = await Promise.all([
+        AsyncStorage.getItem(RESERVATIONS_STORAGE_KEY),
+        AsyncStorage.getItem(FACILITIES_STORAGE_KEY)
+      ]);
+
+      if (cachedReservations) {
+        setReservations(JSON.parse(cachedReservations));
+      }
+      if (cachedFacilities) {
+        setFacilities(JSON.parse(cachedFacilities));
+      }
+    } catch (error) {
+      console.error('Cache yükleme hatası:', error);
+    }
+  };
+
+  // Cache'e veri kaydet
+  const saveToCache = async (reservationsData: Reservation[], facilitiesData: Facility[]) => {
+    try {
+      await Promise.all([
+        AsyncStorage.setItem(RESERVATIONS_STORAGE_KEY, JSON.stringify(reservationsData)),
+        AsyncStorage.setItem(FACILITIES_STORAGE_KEY, JSON.stringify(facilitiesData))
+      ]);
+    } catch (error) {
+      console.error('Cache kaydetme hatası:', error);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
+    
     try {
-      // For development, use mock data instead of actual API calls
-      // In a production app, you would use the actual API calls:
-      // const [facilitiesData, reservationsData] = await Promise.all([
-      //   getFacilities(),
-      //   getReservations(),
-      // ]);
+      // Önce cache'den yükle
+      await loadFromCache();
       
-      // Mock data for testing:
-      const facilitiesData: Facility[] = [
-        {
-          _id: '1',
-          name: 'Toplantı Salonu',
-          description: 'Site sakinleri için toplantı ve etkinlik salonu',
-          openingHour: 9,
-          closingHour: 22,
-          maxReservationHours: 3,
-          isAvailable: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          _id: '2',
-          name: 'Spor Salonu',
-          description: 'Fitness ekipmanları ve spor aletleri',
-          openingHour: 7,
-          closingHour: 23,
-          maxReservationHours: 2,
-          isAvailable: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          _id: '3',
-          name: 'Havuz',
-          description: 'Açık yüzme havuzu',
-          openingHour: 9,
-          closingHour: 20,
-          maxReservationHours: 2,
-          isAvailable: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          _id: '4',
-          name: 'Sauna',
-          description: 'Sauna ve buhar odası',
-          openingHour: 10,
-          closingHour: 21,
-          maxReservationHours: 1,
-          isAvailable: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ];
+      // Network kontrolü
+      const networkConnected = await checkNetworkConnection();
+      setIsOnline(networkConnected);
       
-      const reservationsData: Reservation[] = [
-        {
-          _id: '1',
-          userId: 'user-id',
-          facilityId: '1',
-          facilityName: 'Toplantı Salonu',
-          startTime: '2025-05-15T14:00:00',
-          endTime: '2025-05-15T16:00:00',
-          status: 'approved',
-          createdAt: '2025-05-01T10:30:00',
-          updatedAt: '2025-05-01T11:15:00',
-        },
-        {
-          _id: '2',
-          userId: 'user-id',
-          facilityId: '2',
-          facilityName: 'Spor Salonu',
-          startTime: '2025-05-10T18:00:00',
-          endTime: '2025-05-10T20:00:00',
-          status: 'pending',
-          createdAt: '2025-05-02T09:45:00',
-          updatedAt: '2025-05-02T09:45:00',
-        },
-        {
-          _id: '3',
-          userId: 'user-id',
-          facilityId: '3',
-          facilityName: 'Havuz',
-          startTime: '2025-04-20T15:00:00',
-          endTime: '2025-04-20T17:00:00',
-          status: 'cancelled',
-          createdAt: '2025-04-15T14:20:00',
-          updatedAt: '2025-04-18T11:30:00',
-        },
-      ];
+      if (networkConnected && user?.id) {
+        console.log('🔄 Rezervasyonlar API\'den yükleniyor...');
+        
+        // API'den veri çek
+        const [facilitiesData, reservationsData] = await Promise.all([
+          getFacilities(),
+          getReservations({ userId: user.id })
+        ]);
+        
+        console.log('✅ Rezervasyonlar başarıyla yüklendi:', {
+          facilities: facilitiesData.length,
+          reservations: reservationsData.length,
+          facilitiesData: facilitiesData
+        });
       
       setFacilities(facilitiesData);
       setReservations(reservationsData);
-    } catch (error) {
-      console.error('Error loading reservations data:', error);
-      Alert.alert('Hata', 'Veriler yüklenirken bir hata oluştu.');
+        
+        // Cache'e kaydet
+        await saveToCache(reservationsData, facilitiesData);
+      } else {
+        console.log('📱 Offline mod: Cache\'den veriler kullanılıyor');
+        if (!user?.id) {
+          Alert.alert('Hata', 'Kullanıcı bilgileri bulunamadı. Lütfen tekrar giriş yapın.');
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Rezervasyonlar yükleme hatası:', error);
+      Alert.alert('Hata', error.message || 'Veriler yüklenirken bir hata oluştu.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -170,7 +161,7 @@ export default function ReservationsScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+    }, [user?.id])
   );
 
   const onRefresh = () => {
@@ -184,63 +175,101 @@ export default function ReservationsScreen() {
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Hata', 'Kullanıcı bilgileri bulunamadı. Lütfen tekrar giriş yapın.');
+      return;
+    }
+
+    if (selectedStartTime >= selectedEndTime) {
+      Alert.alert('Hata', 'Bitiş saati başlangıç saatinden sonra olmalıdır.');
+      return;
+    }
+
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
+      const selectedFacilityData = facilities.find(f => f._id === selectedFacility);
+      
       const reservationData = {
-        userId: 'current-user-id', // Normally this would come from user context/auth
+        userId: user.id,
         facilityId: selectedFacility,
         startTime: selectedStartTime.toISOString(),
         endTime: selectedEndTime.toISOString(),
-        status: 'pending' as const
+        status: 'pending' as const,
+        notes: notes.trim() || undefined
       };
 
-      // In a real app, we would call the API:
-      // await createReservation(reservationData);
+      console.log('📝 Rezervasyon oluşturuluyor:', reservationData);
+
+      if (isOnline) {
+        // Online: API'ye gönder
+        const newReservation = await createReservation(reservationData);
+        console.log('✅ Rezervasyon başarıyla oluşturuldu:', newReservation);
+        
+        // Local state'i güncelle
+        setReservations(prev => [newReservation, ...prev]);
+        
+        Alert.alert('Başarılı', 'Rezervasyonunuz başarıyla oluşturuldu ve onay için gönderildi.');
+      } else {
+        // Offline: Local storage'a kaydet
+        const offlineReservation: Reservation = {
+          _id: `offline_${Date.now()}`,
+          ...reservationData,
+          facilityName: selectedFacilityData?.name || 'Bilinmeyen Tesis',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        
+        const updatedReservations = [offlineReservation, ...reservations];
+        setReservations(updatedReservations);
+        await saveToCache(updatedReservations, facilities);
+        
+        Alert.alert('Offline Mod', 'Rezervasyonunuz cihazınızda kaydedildi. İnternet bağlantınız düzeldiğinde otomatik olarak gönderilecektir.');
+      }
       
-      // For demo, just show success message
-      Alert.alert('Başarılı', 'Rezervasyon talebiniz oluşturuldu.');
-      setShowNewReservationForm(false);
       resetForm();
-      
-      // Add the new reservation to the local state for immediate display
-      const newReservation: Reservation = {
-        _id: `temp-${Date.now()}`,
-        userId: 'current-user-id',
-        facilityId: selectedFacility,
-        facilityName: facilities.find(f => f._id === selectedFacility)?.name || '',
-        startTime: selectedStartTime.toISOString(),
-        endTime: selectedEndTime.toISOString(),
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      
-      setReservations(prev => [newReservation, ...prev]);
-    } catch (error) {
-      console.error('Error creating reservation:', error);
-      Alert.alert('Hata', 'Rezervasyon oluşturulurken bir hata meydana geldi.');
+      setShowNewReservationForm(false);
+    } catch (error: any) {
+      console.error('❌ Rezervasyon oluşturma hatası:', error);
+      Alert.alert('Hata', error.message || 'Rezervasyon oluşturulurken bir hata oluştu.');
     }
   };
 
   const handleCancelReservation = async (reservationId: string) => {
     try {
-      // In a real app, we would call the API:
-      // await cancelReservation(reservationId);
+      console.log('🚫 Rezervasyon iptal ediliyor:', reservationId);
       
-      // For demo, just update the local state
+      if (isOnline) {
+        // Online: API'ye gönder
+        await cancelReservation(reservationId);
+        console.log('✅ Rezervasyon başarıyla iptal edildi');
+        
+        // Local state'i güncelle
       setReservations(prev => 
         prev.map(res => 
           res._id === reservationId 
-            ? { ...res, status: 'cancelled', updatedAt: new Date().toISOString() } 
+              ? { ...res, status: 'cancelled' as const, updatedAt: new Date().toISOString() } 
             : res
         )
       );
       
-      Alert.alert('Başarılı', 'Rezervasyon iptal edildi.');
-    } catch (error) {
-      console.error('Error cancelling reservation:', error);
-      Alert.alert('Hata', 'Rezervasyon iptal edilirken bir hata oluştu.');
+        Alert.alert('Başarılı', 'Rezervasyon başarıyla iptal edildi.');
+      } else {
+        // Offline: Sadece local state'i güncelle
+        const updatedReservations = reservations.map(res => 
+          res._id === reservationId 
+            ? { ...res, status: 'cancelled' as const, updatedAt: new Date().toISOString() } 
+            : res
+        );
+        
+        setReservations(updatedReservations);
+        await saveToCache(updatedReservations, facilities);
+        
+        Alert.alert('Offline Mod', 'Rezervasyon iptal edildi. İnternet bağlantınız düzeldiğinde sunucuya gönderilecektir.');
+      }
+    } catch (error: any) {
+      console.error('❌ Rezervasyon iptal etme hatası:', error);
+      Alert.alert('Hata', error.message || 'Rezervasyon iptal edilirken bir hata oluştu.');
     }
   };
 

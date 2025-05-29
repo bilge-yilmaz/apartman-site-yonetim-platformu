@@ -8,15 +8,15 @@ import Colors from '../../constants/Colors';
 import { useAppContext } from '../../utils/appContext';
 
 export default function ProfileScreen() {
-  const { user, hydrate, logout, isLoading } = useUserStore();
+  const { user, loadProfile, logout, isLoading } = useUserStore();
   const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
     const loadUserData = async () => {
       setProfileLoading(true);
       try {
-        // Her profil sayfası açıldığında kullanıcı bilgilerini yeniden yükle
-        await hydrate();
+        // Profil sayfası için özel profil yükleme fonksiyonunu kullan
+        await loadProfile();
         console.log('Profil sayfası için kullanıcı bilgileri güncellendi:', user);
       } catch (error) {
         console.error('Profil bilgileri yüklenirken hata:', error);
@@ -133,20 +133,29 @@ export default function ProfileScreen() {
 
       <Card style={styles.card}>
         <Card.Content>
-            <View style={styles.cardTitleContainer}>
-              <Ionicons name="home-outline" size={24} color={Colors.primary} style={{marginRight: 8}} />
-          <Text style={styles.sectionTitle}>Daire Bilgileri</Text>
-            </View>
+          <View style={styles.cardTitleContainer}>
+            <Ionicons name="home-outline" size={24} color={Colors.primary} style={{marginRight: 8}} />
+            <Text style={styles.sectionTitle}>Daire Bilgileri</Text>
+          </View>
           <Divider style={styles.divider} />
+          
+          {(!user.apartmentNo || !user.block) && (
+            <View style={styles.warningContainer}>
+              <Ionicons name="warning-outline" size={20} color="#FF9500" />
+              <Text style={styles.warningText}>
+                Daire bilgileriniz eksik. Rezervasyon ve bakım talepleri için lütfen güncelleyin.
+              </Text>
+            </View>
+          )}
           
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Blok</Text>
-            <Text style={styles.infoValue}>{user.block || '-'}</Text>
+            <Text style={styles.infoValue}>{user.block || 'Belirtilmemiş'}</Text>
           </View>
           
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Daire No</Text>
-            <Text style={styles.infoValue}>{user.apartmentNo || '-'}</Text>
+            <Text style={styles.infoValue}>{user.apartmentNo || 'Belirtilmemiş'}</Text>
           </View>
           
           <Button 
@@ -154,7 +163,7 @@ export default function ProfileScreen() {
             icon="pencil" 
             onPress={() => router.push('/profile/edit')}
             style={styles.editButton}
-              textColor={Colors.primary}
+            textColor={Colors.primary}
           >
             Profili Düzenle
           </Button>
@@ -375,5 +384,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     marginTop: 16,
+  },
+  warningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#FF9500',
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  warningText: {
+    fontSize: 16,
+    color: '#FF9500',
+    marginLeft: 8,
   },
 });

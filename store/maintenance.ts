@@ -11,6 +11,7 @@ export type MaintenanceRequest = {
   description: string;
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  category?: 'PLUMBING' | 'ELECTRICAL' | 'HVAC' | 'STRUCTURAL' | 'ELEVATOR' | 'OTHER';
   images?: string[];
   assignedTo?: string;
   comments?: {
@@ -49,43 +50,41 @@ export const useMaintenanceStore = create<MaintenanceStore>((set, get) => ({
   fetchRequests: async () => {
     try {
       set({ isLoading: true, error: null });
-      console.log('Arıza bildirimleri getiriliyor...');
+      console.log('🔧 Arıza bildirimleri getiriliyor...');
+      
+      // Cache'i temizle
+      await storage.clearMaintenanceCache();
       
       // İnternet bağlantısını kontrol et
       const netInfo = await NetInfo.fetch();
-      console.log('İnternet bağlantısı:', netInfo.isConnected ? 'Bağlı' : 'Bağlı değil');
+      console.log('📶 İnternet bağlantısı:', netInfo.isConnected ? 'Bağlı' : 'Bağlı değil');
       
       try {
         if (netInfo.isConnected) {
           // Online: API'den veri al
-          console.log('API\'den arıza bildirimleri getiriliyor...');
+          console.log('🌐 API\'den arıza bildirimleri getiriliyor...');
           const requests = await apiServices.maintenance.getAll();
-          console.log('API\'den gelen arıza bildirimleri:', requests.length);
+          console.log('📊 API\'den gelen arıza bildirimleri sayısı:', requests?.length || 0);
+          console.log('📋 API\'den gelen arıza bildirimleri:', JSON.stringify(requests, null, 2));
           
-          set({ requests, isLoading: false });
+          set({ requests: requests || [], isLoading: false });
           // Offline kullanım için önbelleğe al
-          await storage.cacheMaintenance(requests);
-          console.log('Arıza bildirimleri cache\'e kaydedildi');
+          await storage.cacheMaintenance(requests || []);
+          console.log('💾 Arıza bildirimleri cache\'e kaydedildi');
           return;
         }
       } catch (apiError) {
-        console.error('API\'den arıza bildirimleri alınırken hata:', apiError);
-        // API hatası olsa bile devam et, önbellekten oku
+        console.error('❌ API\'den arıza bildirimleri alınırken hata:', apiError);
+        // API hatası durumunda boş dizi döndür, cache'den mock veri alma
+        set({ requests: [], isLoading: false, error: 'API bağlantı hatası' });
+        return;
       }
       
-      // Offline veya API hatası: Önbellekten veri al
-      console.log('Önbellekten arıza bildirimleri alınıyor...');
-      const cached = await storage.getCachedMaintenance();
-      
-      if (cached?.data) {
-        console.log('Önbellekten gelen arıza bildirimleri:', cached.data.length);
-        set({ requests: cached.data, isLoading: false });
-      } else {
-        console.log('Önbellekte arıza bildirimi bulunamadı');
+      // Offline durumunda boş dizi döndür
+      console.log('📱 Offline mod: Boş liste gösteriliyor');
         set({ requests: [], isLoading: false });
-      }
     } catch (error: any) {
-      console.error('Arıza bildirimleri alınamadı:', error);
+      console.error('💥 Arıza bildirimleri alınamadı:', error);
       set({ 
         isLoading: false, 
         error: error.response?.data?.message || 'Arıza bildirimleri alınamadı',

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { AnnouncementStorage, Announcement } from '../../services/offlineStorage';
+import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, Announcement, AnnouncementData } from '../../services/api';
 
 export default function AdminAnnouncementsScreen() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -24,26 +24,32 @@ export default function AdminAnnouncementsScreen() {
   const [formData, setFormData] = useState<{
     title: string;
     content: string;
-    category: 'GENERAL' | 'MAINTENANCE' | 'PAYMENT' | 'EVENT' | 'EMERGENCY';
+    category: string;
     priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-    endDate: string;
+    targetAudience: 'ALL' | 'BLOCK' | 'RESIDENTS';
+    block: string;
     isActive: boolean;
+    isPinned: boolean;
   }>({
     title: '',
     content: '',
     category: 'GENERAL',
     priority: 'MEDIUM',
-    endDate: '',
+    targetAudience: 'ALL',
+    block: '',
     isActive: true,
+    isPinned: false,
   });
 
   const loadAnnouncements = async () => {
     try {
-      const data = await AnnouncementStorage.getAll();
+      console.log('📢 Duyurular yükleniyor...');
+      const data = await getAnnouncements();
       setAnnouncements(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    } catch (error) {
-      console.error('Duyurular yüklenirken hata:', error);
-      Alert.alert('Hata', 'Duyurular yüklenirken bir hata oluştu');
+      console.log('✅ Duyurular başarıyla yüklendi:', data.length);
+    } catch (error: any) {
+      console.error('❌ Duyurular yüklenirken hata:', error);
+      Alert.alert('Hata', error.message || 'Duyurular yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -65,10 +71,12 @@ export default function AdminAnnouncementsScreen() {
       setFormData({
         title: announcement.title,
         content: announcement.content,
-        category: announcement.category,
-        priority: announcement.priority,
-        endDate: announcement.endDate ? new Date(announcement.endDate).toISOString().split('T')[0] : '',
-        isActive: announcement.isActive,
+        category: announcement.category || 'GENERAL',
+        priority: announcement.priority || 'MEDIUM',
+        targetAudience: announcement.targetAudience || 'ALL',
+        block: announcement.block || '',
+        isActive: announcement.isActive !== false,
+        isPinned: announcement.isPinned || false,
       });
     } else {
       setEditingAnnouncement(null);
@@ -77,8 +85,10 @@ export default function AdminAnnouncementsScreen() {
         content: '',
         category: 'GENERAL',
         priority: 'MEDIUM',
-        endDate: '',
+        targetAudience: 'ALL',
+        block: '',
         isActive: true,
+        isPinned: false,
       });
     }
     setModalVisible(true);
@@ -92,8 +102,10 @@ export default function AdminAnnouncementsScreen() {
       content: '',
       category: 'GENERAL',
       priority: 'MEDIUM',
-      endDate: '',
+      targetAudience: 'ALL',
+      block: '',
       isActive: true,
+      isPinned: false,
     });
   };
 
@@ -104,29 +116,32 @@ export default function AdminAnnouncementsScreen() {
     }
 
     try {
-      const announcementData = {
+      const announcementData: AnnouncementData = {
         title: formData.title.trim(),
         content: formData.content.trim(),
         category: formData.category,
         priority: formData.priority,
-        startDate: new Date().toISOString(),
-        endDate: formData.endDate ? new Date(formData.endDate).toISOString() : undefined,
+        targetAudience: formData.targetAudience,
+        block: formData.targetAudience === 'BLOCK' ? formData.block : undefined,
         isActive: formData.isActive,
+        isPinned: formData.isPinned,
       };
 
       if (editingAnnouncement) {
-        await AnnouncementStorage.update(editingAnnouncement.id, announcementData);
+        console.log('📢 Duyuru güncelleniyor:', editingAnnouncement._id);
+        await updateAnnouncement(editingAnnouncement._id, announcementData);
         Alert.alert('Başarılı', 'Duyuru güncellendi');
       } else {
-        await AnnouncementStorage.create(announcementData);
+        console.log('📢 Yeni duyuru oluşturuluyor');
+        await createAnnouncement(announcementData);
         Alert.alert('Başarılı', 'Duyuru oluşturuldu');
       }
 
       closeModal();
       loadAnnouncements();
-    } catch (error) {
-      console.error('Duyuru kaydedilirken hata:', error);
-      Alert.alert('Hata', 'Duyuru kaydedilirken bir hata oluştu');
+    } catch (error: any) {
+      console.error('❌ Duyuru kaydedilirken hata:', error);
+      Alert.alert('Hata', error.message || 'Duyuru kaydedilirken bir hata oluştu');
     }
   };
 
@@ -141,12 +156,13 @@ export default function AdminAnnouncementsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await AnnouncementStorage.delete(announcement.id);
+              console.log('🗑️ Duyuru siliniyor:', announcement._id);
+              await deleteAnnouncement(announcement._id);
               Alert.alert('Başarılı', 'Duyuru silindi');
               loadAnnouncements();
-            } catch (error) {
-              console.error('Duyuru silinirken hata:', error);
-              Alert.alert('Hata', 'Duyuru silinirken bir hata oluştu');
+            } catch (error: any) {
+              console.error('❌ Duyuru silinirken hata:', error);
+              Alert.alert('Hata', error.message || 'Duyuru silinirken bir hata oluştu');
             }
           },
         },
@@ -156,13 +172,14 @@ export default function AdminAnnouncementsScreen() {
 
   const toggleStatus = async (announcement: Announcement) => {
     try {
-      await AnnouncementStorage.update(announcement.id, {
+      console.log('🔄 Duyuru durumu değiştiriliyor:', announcement._id);
+      await updateAnnouncement(announcement._id, {
         isActive: !announcement.isActive,
       });
       loadAnnouncements();
-    } catch (error) {
-      console.error('Duyuru durumu güncellenirken hata:', error);
-      Alert.alert('Hata', 'Duyuru durumu güncellenirken bir hata oluştu');
+    } catch (error: any) {
+      console.error('❌ Duyuru durumu güncellenirken hata:', error);
+      Alert.alert('Hata', error.message || 'Duyuru durumu güncellenirken bir hata oluştu');
     }
   };
 
@@ -262,7 +279,7 @@ export default function AdminAnnouncementsScreen() {
           </View>
         ) : (
           announcements.map((announcement) => (
-            <View key={announcement.id} style={[
+            <View key={announcement._id} style={[
               styles.announcementCard,
               !announcement.isActive && styles.inactiveCard
             ]}>
@@ -293,11 +310,11 @@ export default function AdminAnnouncementsScreen() {
                   </View>
                 </View>
                 <View style={styles.cardMeta}>
-                  <View style={[styles.badge, { backgroundColor: getCategoryColor(announcement.category) }]}>
-                    <Text style={styles.badgeText}>{getCategoryText(announcement.category)}</Text>
+                  <View style={[styles.badge, { backgroundColor: getCategoryColor(announcement.category || 'GENERAL') }]}>
+                    <Text style={styles.badgeText}>{getCategoryText(announcement.category || 'GENERAL')}</Text>
                   </View>
-                  <View style={[styles.badge, { backgroundColor: getPriorityColor(announcement.priority) }]}>
-                    <Text style={styles.badgeText}>{getPriorityText(announcement.priority)}</Text>
+                  <View style={[styles.badge, { backgroundColor: getPriorityColor(announcement.priority || 'MEDIUM') }]}>
+                    <Text style={styles.badgeText}>{getPriorityText(announcement.priority || 'MEDIUM')}</Text>
                   </View>
                   <Text style={styles.cardDate}>
                     {new Date(announcement.createdAt).toLocaleDateString('tr-TR')}
@@ -305,11 +322,6 @@ export default function AdminAnnouncementsScreen() {
                 </View>
               </View>
               <Text style={styles.cardContent}>{announcement.content}</Text>
-              {announcement.endDate && (
-                <Text style={styles.endDate}>
-                  Bitiş: {new Date(announcement.endDate).toLocaleDateString('tr-TR')}
-                </Text>
-              )}
             </View>
           ))
         )}
@@ -410,12 +422,36 @@ export default function AdminAnnouncementsScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Bitiş Tarihi (İsteğe bağlı)</Text>
+                <Text style={styles.formLabel}>Hedef Kitle</Text>
+                <View style={styles.pickerContainer}>
+                  <TouchableOpacity
+                    style={styles.picker}
+                    onPress={() => {
+                      Alert.alert(
+                        'Hedef Kitle Seç',
+                        '',
+                        [
+                          { text: 'Tümü', onPress: () => setFormData({ ...formData, targetAudience: 'ALL' }) },
+                          { text: 'Blok', onPress: () => setFormData({ ...formData, targetAudience: 'BLOCK' }) },
+                          { text: 'Kiracılar', onPress: () => setFormData({ ...formData, targetAudience: 'RESIDENTS' }) },
+                          { text: 'İptal', style: 'cancel' },
+                        ]
+                      );
+                    }}
+                  >
+                    <Text style={styles.pickerText}>{formData.targetAudience === 'ALL' ? 'Tümü' : formData.targetAudience === 'BLOCK' ? 'Blok' : 'Kiracılar'}</Text>
+                    <Ionicons name="chevron-down" size={20} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Blok</Text>
                 <TextInput
                   style={styles.formInput}
-                  value={formData.endDate}
-                  onChangeText={(text) => setFormData({ ...formData, endDate: text })}
-                  placeholder="YYYY-MM-DD"
+                  value={formData.block}
+                  onChangeText={(text) => setFormData({ ...formData, block: text })}
+                  placeholder="Blok"
                 />
               </View>
 
@@ -619,12 +655,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4B5563',
     lineHeight: 20,
-  },
-  endDate: {
-    fontSize: 12,
-    color: '#EF4444',
-    marginTop: 8,
-    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,

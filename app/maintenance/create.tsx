@@ -1,28 +1,25 @@
 import { useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, TextInput, Button, RadioButton, SegmentedButtons, ActivityIndicator } from 'react-native-paper';
+import { Text, TextInput, Button, RadioButton, SegmentedButtons, ActivityIndicator, Menu, Divider } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useUserStore } from '../../store/user';
+import { createMaintenanceRequest, MaintenanceRequestData } from '../../services/api';
+import { checkNetworkConnection } from '../../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// AsyncStorage anahtarı
+// AsyncStorage anahtarı (offline backup için)
 const MAINTENANCE_STORAGE_KEY = 'maintenance_requests';
 
-// Arıza bildirimi tipi
-type MaintenanceRequest = {
-  _id: string;
-  title: string;
-  description: string;
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  apartmentNo: string;
-  block: string;
-  createdBy?: string;
-  assignedTo?: string;
-  category?: string;
-  createdAt: string;
-  updatedAt: string;
-};
+// Arıza kategorileri
+const CATEGORIES = [
+  { value: 'PLUMBING', label: 'Tesisatçı' },
+  { value: 'ELECTRICAL', label: 'Elektrikçi' },
+  { value: 'HEATING', label: 'Isıtma/Soğutma' },
+  { value: 'ELEVATOR', label: 'Asansör' },
+  { value: 'CLEANING', label: 'Temizlik' },
+  { value: 'SECURITY', label: 'Güvenlik' },
+  { value: 'OTHER', label: 'Diğer' },
+];
 
 export default function CreateMaintenanceScreen() {
   const { user } = useUserStore();
@@ -30,61 +27,36 @@ export default function CreateMaintenanceScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'>('MEDIUM');
+  const [category, setCategory] = useState<'ELECTRICAL' | 'PLUMBING' | 'HEATING' | 'ELEVATOR' | 'CLEANING' | 'SECURITY' | 'OTHER'>('OTHER');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [categoryMenuVisible, setCategoryMenuVisible] = useState(false);
 
-  // Arıza bildirimi oluştur
-  const createMaintenanceRequest = async (data: {
-    title: string;
-    description: string;
-    priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-    apartmentNo: string;
-    block: string;
-  }) => {
+  // Offline backup için AsyncStorage'a kaydet
+  const saveToLocalStorage = async (data: any) => {
     try {
-      console.log('Yeni arıza bildirimi oluşturuluyor:', data);
-      
-      // AsyncStorage'dan mevcut arıza bildirimlerini al
       const storedData = await AsyncStorage.getItem(MAINTENANCE_STORAGE_KEY);
-      let currentRequests: MaintenanceRequest[] = [];
+      let currentRequests: any[] = [];
       
       if (storedData) {
         currentRequests = JSON.parse(storedData);
-        console.log('Mevcut arıza bildirimleri:', currentRequests.length);
       }
       
-      // Yeni arıza bildirimi oluştur
-      const newRequest: MaintenanceRequest = {
-        _id: `new_${Date.now()}`,
-        title: data.title,
-        description: data.description,
-        priority: data.priority,
+      const newRequest = {
+        _id: `offline_${Date.now()}`,
+        ...data,
         status: 'PENDING',
-        apartmentNo: data.apartmentNo,
-        block: data.block,
-        createdBy: user?.id || 'unknown',
-        category: 'GENERAL',
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        isOffline: true
       };
       
-      // Yeni arıza bildirimini listeye ekle (en başa)
       const updatedRequests = [newRequest, ...currentRequests];
-      
-      // Güncellenmiş listeyi AsyncStorage'a kaydet
       await AsyncStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(updatedRequests));
-      console.log('Arıza bildirimleri güncellendi, yeni toplam:', updatedRequests.length);
       
-      return {
-        success: true,
-        data: newRequest,
-        message: 'Arıza bildirimi başarıyla oluşturuldu'
-      };
+      return newRequest;
     } catch (error) {
-      console.error('Arıza bildirimi oluşturulurken hata:', error);
-      return {
-        success: false,
-        message: 'Arıza bildirimi oluşturulurken bir hata oluştu'
-      };
+      console.error('Local storage save error:', error);
+      throw error;
     }
   };
 
@@ -99,47 +71,92 @@ export default function CreateMaintenanceScreen() {
       return;
     }
 
-    if (!user?.apartmentNo || !user?.block) {
-      Alert.alert('Hata', 'Daire bilgileriniz eksik, lütfen profilinizi güncelleyin');
+    if (!user?.id) {
+      Alert.alert('Hata', 'Kullanıcı bilgileri bulunamadı. Lütfen tekrar giriş yapın.');
       return;
     }
 
     try {
       setIsSubmitting(true);
-      console.log('Arıza bildirimi gönderiliyor...');
+      console.log('🔧 Arıza bildirimi gönderiliyor...');
       
-      const result = await createMaintenanceRequest({
-        title,
-        description,
+      // Network kontrolü
+      const isConnected = await checkNetworkConnection();
+      
+      const requestData: MaintenanceRequestData = {
+        userId: user.id,
+        title: title.trim(),
+        description: description.trim(),
         priority,
-        apartmentNo: user.apartmentNo,
-        block: user.block,
-      });
+        category,
+        apartmentNo: user.apartmentNo || 'Belirtilmemiş',
+        block: user.block || 'Belirtilmemiş',
+        status: 'PENDING'
+      };
       
-      console.log('Arıza bildirimi oluşturma sonucu:', result);
-      
-      if (result && result.success) {
-        console.log('Arıza bildirimi başarıyla oluşturuldu');
+      if (isConnected) {
+        try {
+          // Online: API'ye gönder
+          console.log('📡 Online mod: API\'ye gönderiliyor');
+          const result = await createMaintenanceRequest(requestData);
+          console.log('✅ Arıza bildirimi başarıyla oluşturuldu:', result);
         
-        Alert.alert('Başarılı', 'Arıza bildiriminiz oluşturuldu', [
-          { 
-            text: 'Tamam', 
-            onPress: () => {
-              // Ana ekrana dön
-              router.replace('/(tabs)');
+          Alert.alert('Başarılı', 'Arıza bildiriminiz başarıyla gönderildi ve yöneticilere iletildi.', [
+            { 
+              text: 'Tamam', 
+              onPress: () => {
+                router.replace('/(tabs)/maintenance');
+              }
             }
-          }
-        ]);
+          ]);
+        } catch (apiError: any) {
+          console.error('❌ API hatası:', apiError);
+          
+          // API hatası durumunda offline olarak kaydet
+          console.log('💾 API hatası nedeniyle offline olarak kaydediliyor');
+          await saveToLocalStorage(requestData);
+          
+          Alert.alert(
+            'Uyarı', 
+            'Arıza bildiriminiz geçici olarak cihazınızda kaydedildi. İnternet bağlantınız düzeldiğinde otomatik olarak gönderilecektir.',
+            [
+              { 
+                text: 'Tamam', 
+                onPress: () => {
+                  router.replace('/(tabs)/maintenance');
+                }
+              }
+            ]
+          );
+        }
       } else {
-        console.error('Arıza bildirimi oluşturulamadı:', result?.message || 'Bilinmeyen hata');
-        Alert.alert('Hata', result?.message || 'Arıza bildirimi oluşturulurken bir hata oluştu');
+        // Offline: Local storage'a kaydet
+        console.log('📱 Offline mod: Yerel olarak kaydediliyor');
+        await saveToLocalStorage(requestData);
+        
+        Alert.alert(
+          'Offline Mod', 
+          'İnternet bağlantınız olmadığı için arıza bildiriminiz cihazınızda kaydedildi. Bağlantınız düzeldiğinde otomatik olarak gönderilecektir.',
+          [
+            { 
+              text: 'Tamam', 
+              onPress: () => {
+                router.replace('/(tabs)/maintenance');
+              }
+            }
+          ]
+        );
       }
-    } catch (error) {
-      console.error('Arıza bildirimi oluşturma hatası:', error);
-      Alert.alert('Hata', 'Arıza bildirimi oluşturulurken bir hata oluştu');
+    } catch (error: any) {
+      console.error('❌ Arıza bildirimi oluşturma hatası:', error);
+      Alert.alert('Hata', error.message || 'Arıza bildirimi oluşturulurken bir hata oluştu');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const getCategoryLabel = (value: string) => {
+    return CATEGORIES.find(cat => cat.value === value)?.label || value;
   };
 
   return (
@@ -157,6 +174,7 @@ export default function CreateMaintenanceScreen() {
             onChangeText={setTitle}
             mode="outlined"
             style={styles.input}
+            placeholder="Örn: Musluk arızası, elektrik kesintisi..."
           />
           
           <TextInput
@@ -167,7 +185,35 @@ export default function CreateMaintenanceScreen() {
             multiline
             numberOfLines={5}
             style={styles.input}
+            placeholder="Arızanın detaylarını açıklayın..."
           />
+          
+          <Text style={styles.label}>Kategori</Text>
+          <Menu
+            visible={categoryMenuVisible}
+            onDismiss={() => setCategoryMenuVisible(false)}
+            anchor={
+              <Button
+                mode="outlined"
+                onPress={() => setCategoryMenuVisible(true)}
+                style={styles.categoryButton}
+                contentStyle={styles.categoryButtonContent}
+              >
+                {getCategoryLabel(category)}
+              </Button>
+            }
+          >
+            {CATEGORIES.map((cat) => (
+              <Menu.Item
+                key={cat.value}
+                onPress={() => {
+                  setCategory(cat.value as any);
+                  setCategoryMenuVisible(false);
+                }}
+                title={cat.label}
+              />
+            ))}
+          </Menu>
           
           <Text style={styles.label}>Öncelik</Text>
           <SegmentedButtons
@@ -186,6 +232,9 @@ export default function CreateMaintenanceScreen() {
             <Text style={styles.infoText}>
               Daire: {user?.block}-{user?.apartmentNo}
             </Text>
+            <Text style={styles.infoSubText}>
+              Bu bildirim yöneticilere iletilecektir
+            </Text>
           </View>
           
           <Button
@@ -194,14 +243,16 @@ export default function CreateMaintenanceScreen() {
             style={styles.button}
             loading={isSubmitting}
             disabled={isSubmitting}
+            icon="tools"
           >
-            Arıza Bildir
+            {isSubmitting ? 'Gönderiliyor...' : 'Arıza Bildir'}
           </Button>
           
           <Button
             mode="outlined"
             onPress={() => router.back()}
             style={styles.cancelButton}
+            disabled={isSubmitting}
           >
             İptal
           </Button>
@@ -249,11 +300,21 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 16,
   },
+  infoSubText: {
+    fontSize: 14,
+    color: '#777',
+  },
   button: {
     marginBottom: 16,
     paddingVertical: 6,
   },
   cancelButton: {
     marginBottom: 24,
+  },
+  categoryButton: {
+    marginBottom: 16,
+  },
+  categoryButtonContent: {
+    justifyContent: 'flex-start',
   },
 });

@@ -10,6 +10,10 @@ import { AppProvider } from '../utils/appContext';
 import { AuthGuard } from '../utils/AuthGuard';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../constants/Colors';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Prevent auto hiding splash screen
 SplashScreen.preventAutoHideAsync();
@@ -57,34 +61,42 @@ export default function RootLayout() {
 
   // Main app layout
   return (
-    <QueryClientProvider client={queryClient}>
-      <PaperProvider theme={colorScheme === 'dark' ? darkTheme : lightTheme}>
-        <AppProvider>
-          <AuthGuard>
-            <Stack screenOptions={{ 
-              headerShown: true,
-              headerTitleStyle: { 
-                color: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text, 
-                fontWeight: '600' 
-              },
-              headerStyle: {
-                backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-              },
-              animation: 'slide_from_right',
-            }}>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="auth/login" options={{ title: 'Giriş Yap' }} />
-              <Stack.Screen name="auth/register" options={{ title: 'Kayıt Ol' }} />
-              <Stack.Screen name="profile/edit" options={{ title: 'Profili Düzenle' }} />
-              <Stack.Screen name="payments/details/[id]" options={{ title: 'Ödeme Detayı' }} />
-              <Stack.Screen name="maintenance/create" options={{ title: 'Arıza Bildir' }} />
-              <Stack.Screen name="maintenance/details/[id]" options={{ title: 'Arıza Detayı' }} />
-              <Stack.Screen name="admin" options={{ headerShown: false }} />
-            </Stack>
-          </AuthGuard>
-        </AppProvider>
-      </PaperProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <PaperProvider theme={colorScheme === 'dark' ? darkTheme : lightTheme}>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <QueryClientProvider client={queryClient}>
+              <AppProvider>
+                <AuthGuard>
+                  <Stack screenOptions={{ 
+                    headerShown: true,
+                    headerTitleStyle: { 
+                      color: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text, 
+                      fontWeight: '600' 
+                    },
+                    headerStyle: {
+                      backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+                    },
+                    animation: 'slide_from_right',
+                  }}>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="notifications" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth/login" options={{ title: 'Giriş Yap' }} />
+                    <Stack.Screen name="auth/register" options={{ title: 'Kayıt Ol' }} />
+                    <Stack.Screen name="profile/edit" options={{ title: 'Profili Düzenle' }} />
+                    <Stack.Screen name="payments/details/[id]" options={{ title: 'Ödeme Detayı' }} />
+                    <Stack.Screen name="maintenance/create" options={{ title: 'Arıza Bildir' }} />
+                    <Stack.Screen name="maintenance/details/[id]" options={{ title: 'Arıza Detayı' }} />
+                    <Stack.Screen name="admin" options={{ headerShown: false }} />
+                  </Stack>
+                </AuthGuard>
+              </AppProvider>
+            </QueryClientProvider>
+            <StatusBar style="auto" />
+          </ThemeProvider>
+        </PaperProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

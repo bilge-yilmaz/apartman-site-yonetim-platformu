@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { MaintenanceStorage, MaintenanceRequest } from '../../services/offlineStorage';
+import { getMaintenanceRequests, createMaintenanceRequest, updateMaintenanceRequest, deleteMaintenanceRequest, MaintenanceRequest, MaintenanceRequestData } from '../../services/api';
 
 export default function AdminMaintenanceScreen() {
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
@@ -23,30 +23,33 @@ export default function AdminMaintenanceScreen() {
   const [editingRequest, setEditingRequest] = useState<MaintenanceRequest | null>(null);
   const [formData, setFormData] = useState<{
     apartmentNo: string;
-  title: string;
-  description: string;
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-    category: 'PLUMBING' | 'ELECTRICAL' | 'HVAC' | 'STRUCTURAL' | 'ELEVATOR' | 'OTHER';
-  assignedTo?: string;
+    title: string;
+    description: string;
+    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+    priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+    category: 'ELECTRICAL' | 'PLUMBING' | 'HEATING' | 'ELEVATOR' | 'CLEANING' | 'SECURITY' | 'OTHER';
+    assignedTo?: string;
     estimatedCost?: string;
     actualCost?: string;
+    notes?: string;
   }>({
-      apartmentNo: '',
+    apartmentNo: '',
     title: '',
     description: '',
-      status: 'PENDING',
-      priority: 'MEDIUM',
+    status: 'PENDING',
+    priority: 'MEDIUM',
     category: 'OTHER',
   });
 
   const loadMaintenanceRequests = async () => {
     try {
-      const data = await MaintenanceStorage.getAll();
+      console.log('🔧 Bakım talepleri yükleniyor...');
+      const data = await getMaintenanceRequests();
       setMaintenanceRequests(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    } catch (error) {
-      console.error('Bakım talepleri yüklenirken hata:', error);
-      Alert.alert('Hata', 'Bakım talepleri yüklenirken bir hata oluştu');
+      console.log('✅ Bakım talepleri başarıyla yüklendi:', data.length);
+    } catch (error: any) {
+      console.error('❌ Bakım talepleri yüklenirken hata:', error);
+      Alert.alert('Hata', error.message || 'Bakım talepleri yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -75,6 +78,7 @@ export default function AdminMaintenanceScreen() {
         assignedTo: request.assignedTo || '',
         estimatedCost: request.estimatedCost?.toString() || '',
         actualCost: request.actualCost?.toString() || '',
+        notes: request.notes || '',
       });
     } else {
       setEditingRequest(null);
@@ -110,7 +114,8 @@ export default function AdminMaintenanceScreen() {
     }
 
     try {
-      const requestData = {
+      const requestData: MaintenanceRequestData = {
+        userId: 'admin', // Admin tarafından oluşturulan talepler için
         apartmentNo: formData.apartmentNo.trim(),
         title: formData.title.trim(),
         description: formData.description.trim(),
@@ -120,23 +125,24 @@ export default function AdminMaintenanceScreen() {
         assignedTo: formData.assignedTo?.trim() || undefined,
         estimatedCost: formData.estimatedCost ? parseFloat(formData.estimatedCost) : undefined,
         actualCost: formData.actualCost ? parseFloat(formData.actualCost) : undefined,
-        ...(formData.status === 'IN_PROGRESS' && !editingRequest?.startDate && { startDate: new Date().toISOString() }),
-        ...(formData.status === 'COMPLETED' && !editingRequest?.completionDate && { completionDate: new Date().toISOString() }),
+        notes: formData.notes?.trim() || undefined,
       };
 
       if (editingRequest) {
-        await MaintenanceStorage.update(editingRequest.id, requestData);
+        console.log('🔧 Bakım talebi güncelleniyor:', editingRequest._id);
+        await updateMaintenanceRequest(editingRequest._id, requestData);
         Alert.alert('Başarılı', 'Bakım talebi güncellendi');
       } else {
-        await MaintenanceStorage.create(requestData);
+        console.log('🔧 Yeni bakım talebi oluşturuluyor');
+        await createMaintenanceRequest(requestData);
         Alert.alert('Başarılı', 'Bakım talebi oluşturuldu');
       }
 
       closeModal();
       loadMaintenanceRequests();
-    } catch (error) {
-      console.error('Bakım talebi kaydedilirken hata:', error);
-      Alert.alert('Hata', 'Bakım talebi kaydedilirken bir hata oluştu');
+    } catch (error: any) {
+      console.error('❌ Bakım talebi kaydedilirken hata:', error);
+      Alert.alert('Hata', error.message || 'Bakım talebi kaydedilirken bir hata oluştu');
     }
   };
 
@@ -151,12 +157,13 @@ export default function AdminMaintenanceScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await MaintenanceStorage.delete(request.id);
+              console.log('🗑️ Bakım talebi siliniyor:', request._id);
+              await deleteMaintenanceRequest(request._id);
               Alert.alert('Başarılı', 'Bakım talebi silindi');
               loadMaintenanceRequests();
-            } catch (error) {
-              console.error('Bakım talebi silinirken hata:', error);
-              Alert.alert('Hata', 'Bakım talebi silinirken bir hata oluştu');
+            } catch (error: any) {
+              console.error('❌ Bakım talebi silinirken hata:', error);
+              Alert.alert('Hata', error.message || 'Bakım talebi silinirken bir hata oluştu');
             }
           },
         },
@@ -166,22 +173,23 @@ export default function AdminMaintenanceScreen() {
 
   const updateStatus = async (request: MaintenanceRequest, newStatus: MaintenanceRequest['status']) => {
     try {
-      const updateData: any = { status: newStatus };
+      console.log('🔄 Bakım talebi durumu değiştiriliyor:', request._id, newStatus);
+      const updateData: Partial<MaintenanceRequestData> = { status: newStatus };
       
-      if (newStatus === 'IN_PROGRESS' && !request.startDate) {
-        updateData.startDate = new Date().toISOString();
+      if (newStatus === 'IN_PROGRESS' && !request.scheduledDate) {
+        updateData.scheduledDate = new Date().toISOString();
       }
       
-      if (newStatus === 'COMPLETED' && !request.completionDate) {
-        updateData.completionDate = new Date().toISOString();
+      if (newStatus === 'COMPLETED' && !request.completedDate) {
+        updateData.completedDate = new Date().toISOString();
       }
 
-      await MaintenanceStorage.update(request.id, updateData);
+      await updateMaintenanceRequest(request._id, updateData);
       loadMaintenanceRequests();
       Alert.alert('Başarılı', 'Durum güncellendi');
-    } catch (error) {
-      console.error('Durum güncellenirken hata:', error);
-      Alert.alert('Hata', 'Durum güncellenirken bir hata oluştu');
+    } catch (error: any) {
+      console.error('❌ Durum güncellenirken hata:', error);
+      Alert.alert('Hata', error.message || 'Durum güncellenirken bir hata oluştu');
     }
   };
 
@@ -229,9 +237,10 @@ export default function AdminMaintenanceScreen() {
     switch (category) {
       case 'PLUMBING': return 'Tesisatçı';
       case 'ELECTRICAL': return 'Elektrikçi';
-      case 'HVAC': return 'Klima/Isıtma';
-      case 'STRUCTURAL': return 'Yapısal';
+      case 'HEATING': return 'Isıtma';
       case 'ELEVATOR': return 'Asansör';
+      case 'CLEANING': return 'Temizlik';
+      case 'SECURITY': return 'Güvenlik';
       case 'OTHER': return 'Diğer';
       default: return category;
     }
@@ -308,7 +317,7 @@ export default function AdminMaintenanceScreen() {
           </View>
         ) : (
           maintenanceRequests.map((request) => (
-            <View key={request.id} style={styles.requestCard}>
+            <View key={request._id} style={styles.requestCard}>
               <View style={styles.cardHeader}>
                 <View style={styles.cardTitleRow}>
                   <Text style={styles.requestTitle}>{request.title}</Text>
@@ -385,16 +394,16 @@ export default function AdminMaintenanceScreen() {
                     <Text style={styles.detailLabel}>Oluşturulma:</Text>
                     <Text style={styles.detailValue}>{formatDate(request.createdAt)}</Text>
                   </View>
-                  {request.startDate && (
+                  {request.scheduledDate && (
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Başlangıç:</Text>
-                      <Text style={styles.detailValue}>{formatDate(request.startDate)}</Text>
+                      <Text style={styles.detailValue}>{formatDate(request.scheduledDate)}</Text>
                     </View>
                   )}
-                  {request.completionDate && (
+                  {request.completedDate && (
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Tamamlanma:</Text>
-                      <Text style={styles.detailValue}>{formatDate(request.completionDate)}</Text>
+                      <Text style={styles.detailValue}>{formatDate(request.completedDate)}</Text>
                     </View>
                   )}
                 </View>
@@ -467,9 +476,10 @@ export default function AdminMaintenanceScreen() {
                         [
                           { text: 'Tesisatçı', onPress: () => setFormData({ ...formData, category: 'PLUMBING' }) },
                           { text: 'Elektrikçi', onPress: () => setFormData({ ...formData, category: 'ELECTRICAL' }) },
-                          { text: 'Klima/Isıtma', onPress: () => setFormData({ ...formData, category: 'HVAC' }) },
-                          { text: 'Yapısal', onPress: () => setFormData({ ...formData, category: 'STRUCTURAL' }) },
+                          { text: 'Isıtma', onPress: () => setFormData({ ...formData, category: 'HEATING' }) },
                           { text: 'Asansör', onPress: () => setFormData({ ...formData, category: 'ELEVATOR' }) },
+                          { text: 'Temizlik', onPress: () => setFormData({ ...formData, category: 'CLEANING' }) },
+                          { text: 'Güvenlik', onPress: () => setFormData({ ...formData, category: 'SECURITY' }) },
                           { text: 'Diğer', onPress: () => setFormData({ ...formData, category: 'OTHER' }) },
                           { text: 'İptal', style: 'cancel' },
                         ]
@@ -560,6 +570,18 @@ export default function AdminMaintenanceScreen() {
                     keyboardType="numeric"
                   />
                 </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Notlar</Text>
+                <TextInput
+                  style={[styles.formInput, styles.textArea]}
+                  value={formData.notes}
+                  onChangeText={(text) => setFormData({ ...formData, notes: text })}
+                  placeholder="Detaylı notlar"
+                  multiline
+                  numberOfLines={4}
+                />
               </View>
             </ScrollView>
 

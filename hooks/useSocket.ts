@@ -3,19 +3,23 @@ import { io, Socket } from 'socket.io-client'
 import { getToken } from '../services/api'
 import { useUserStore } from '../store/user'
 import Constants from 'expo-constants'
+import NotificationService from '../services/notificationService'
 
 // Socket URL belirleme
 const getSocketUrl = () => {
-  if (__DEV__) {
-    if (Constants.platform?.ios) {
-      return 'http://localhost:3000'
-    } else if (Constants.platform?.android) {
-      return 'http://10.0.2.2:3000'
-    } else {
-      return 'http://192.168.1.100:3000' // Kendi IP adresinizi yazın
-    }
+  // Environment variable'dan URL al
+  if (process.env.EXPO_PUBLIC_SOCKET_URL) {
+    return process.env.EXPO_PUBLIC_SOCKET_URL;
   }
-  return 'https://your-production-api.com' // Production URL
+  
+  // Fallback olarak IP adresi kullan
+  const COMPUTER_IP = '10.192.90.95';
+  
+  if (__DEV__) {
+    return `http://${COMPUTER_IP}:3000`;
+  }
+  
+  return 'https://your-production-api.com'; // Production URL
 }
 
 interface Notification {
@@ -121,23 +125,43 @@ export const useSocket = (): UseSocketReturn => {
 
         // Bildirim dinleyicileri
         socket.on('notification', (data) => {
-          console.log('Yeni bildirim alındı:', data)
-          // Burada bildirim store'una ekleyebilir veya push notification gösterebilirsiniz
+          console.log('🔔 Yeni bildirim alındı:', data)
           handleNotification(data)
         })
 
+        socket.on('announcement-notification', (data) => {
+          console.log('📢 Yeni duyuru bildirimi alındı:', data)
+          handleNotification(data)
+        })
+
+        socket.on('maintenance-notification', (data) => {
+          console.log('🔧 Bakım bildirimi alındı:', data)
+          handleNotification(data)
+        })
+
+        socket.on('payment-notification', (data) => {
+          console.log('💰 Ödeme bildirimi alındı:', data)
+          handleNotification(data)
+        })
+
+        socket.on('reservation-notification', (data) => {
+          console.log('📅 Rezervasyon bildirimi alındı:', data)
+          handleNotification(data)
+        })
+
+        // Eski format destekleri (geriye uyumluluk için)
         socket.on('announcement', (data) => {
-          console.log('Yeni duyuru alındı:', data)
+          console.log('📢 Eski format duyuru alındı:', data)
           handleAnnouncement(data)
         })
 
         socket.on('maintenance-update', (data) => {
-          console.log('Bakım güncellemesi alındı:', data)
+          console.log('🔧 Eski format bakım güncellemesi alındı:', data)
           handleMaintenanceUpdate(data)
         })
 
         socket.on('payment-reminder', (data) => {
-          console.log('Ödeme hatırlatması alındı:', data)
+          console.log('💰 Eski format ödeme hatırlatması alındı:', data)
           handlePaymentReminder(data)
         })
 
@@ -163,22 +187,54 @@ export const useSocket = (): UseSocketReturn => {
 
   // Bildirim işleyicileri
   const handleNotification = (data: any) => {
-    // Expo Notifications ile push notification göster
-    // veya uygulama içi bildirim store'una ekle
-    console.log('Bildirim işleniyor:', data)
+    console.log('🔔 Bildirim işleniyor:', data)
+    
+    // Yeni format: { type: 'announcement-notification', data: { ... } }
+    // Eski format: { type: 'general', title: '...', message: '...' }
+    let notificationData = data
+    
+    // Eğer data.data varsa, yeni format
+    if (data.data) {
+      notificationData = data.data
+    }
     
     // Bildirimi state'e ekle
     const newNotification: Notification = {
-      id: Date.now(),
-      type: data.type || 'general',
-      title: data.title || 'Yeni Bildirim',
-      message: data.message || '',
-      data: data,
-      timestamp: new Date(),
+      id: notificationData.id || Date.now(),
+      type: getNotificationType(notificationData.type || data.type),
+      title: notificationData.title || 'Yeni Bildirim',
+      message: notificationData.message || '',
+      data: notificationData,
+      timestamp: new Date(notificationData.timestamp || Date.now()),
       read: false
     }
     
+    console.log('📱 Yeni bildirim ekleniyor:', newNotification)
     setNotifications(prev => [newNotification, ...prev])
+    
+    // TODO: Expo Notifications ile push notification göster
+    // showPushNotification(newNotification)
+  }
+
+  // Bildirim tipini normalize et
+  const getNotificationType = (type: string): 'announcement' | 'maintenance' | 'payment' | 'reservation' => {
+    switch (type) {
+      case 'announcement-notification':
+      case 'announcement':
+      case 'system':
+        return 'announcement'
+      case 'maintenance-notification':
+      case 'maintenance':
+        return 'maintenance'
+      case 'payment-notification':
+      case 'payment':
+        return 'payment'
+      case 'reservation-notification':
+      case 'reservation':
+        return 'reservation'
+      default:
+        return 'announcement'
+    }
   }
 
   const handleAnnouncement = (data: any) => {
